@@ -1,0 +1,41 @@
+# ================================
+# Python / FastAPI
+# ================================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+ENV/
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# ================================
+# Env files (Secrets)
+# ================================
+.env
+.env.local
+.env.*.local
+*.env
+
+# ================================
+# OS / Editor files
+# ================================
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
