@@ -1,64 +1,141 @@
 // frontend/src/lib/api/syllabus.service.ts
 /**
- * Syllabus API service
- * Handles syllabus upload and management
+ * Fixed Syllabus API service
  */
 
-import { apiClient } from './client';
+// Use direct fetch instead of the apiClient to avoid any issues
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+
+console.log('API Base URL:', API_BASE_URL); // Debug log
 
 export interface Syllabus {
   id: string;
   user_id: string;
   file_name: string;
-  file_url?: string;
-  content: string;
-  topics: Topic[];
-  uploaded_at: string;
-  processed_at?: string;
   status: 'pending' | 'processing' | 'completed' | 'failed';
+  uploaded_at: string;
+  topics?: any[];
+  topics_count?: number;
 }
 
 export interface Topic {
-  id: string;
+  id?: string;
   name: string;
   description: string;
   importance: number;
+  prerequisites?: string[];
+  estimated_hours?: number;
   syllabus_id: string;
 }
 
 class SyllabusService {
-  async uploadSyllabus(file: File, userId: string): Promise<Syllabus> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('user_id', userId);
+  private getApiUrl(): string {
+    // Always use the hardcoded URL for now to ensure it works
+    return 'http://localhost:8000/api/v1';
+  }
 
-    // Note: Don't set Content-Type header, let browser set it with boundary
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/syllabus/upload`, {
-      method: 'POST',
-      body: formData,
-    });
+  async uploadSyllabus(file: File, userId: string): Promise<any> {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('user_id', userId);
 
-    if (!response.ok) {
-      throw new Error('Failed to upload syllabus');
+      const url = `${this.getApiUrl()}/syllabus/upload`;
+      console.log('Upload URL:', url);
+
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.status}`);
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Upload error:', error);
+      throw error;
     }
-
-    return response.json();
   }
 
   async getSyllabi(userId: string): Promise<Syllabus[]> {
-    return apiClient.get<Syllabus[]>('/syllabus/list', { user_id: userId });
+    try {
+      const url = `${this.getApiUrl()}/syllabus/list?user_id=${userId}`;
+      console.log('Fetching syllabi from:', url); // Debug log
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      console.log('Response status:', response.status); // Debug log
+
+      if (!response.ok) {
+        console.error('Response not ok:', response.status, response.statusText);
+        // Return empty array instead of throwing to prevent page crash
+        return [];
+      }
+
+      const data = await response.json();
+      console.log('Syllabi data:', data); // Debug log
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Error fetching syllabi:', error);
+      // Return empty array to prevent page crash
+      return [];
+    }
   }
 
-  async getSyllabus(syllabusId: string): Promise<Syllabus> {
-    return apiClient.get<Syllabus>(`/syllabus/${syllabusId}`);
+  async getSyllabus(syllabusId: string): Promise<Syllabus | null> {
+    try {
+      const url = `${this.getApiUrl()}/syllabus/${syllabusId}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return null;
+      }
+
+      return response.json();
+    } catch (error) {
+      console.error('Error fetching syllabus:', error);
+      return null;
+    }
   }
 
   async deleteSyllabus(syllabusId: string): Promise<void> {
-    return apiClient.delete(`/syllabus/${syllabusId}`);
+    try {
+      const url = `${this.getApiUrl()}/syllabus/${syllabusId}`;
+      const response = await fetch(url, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete syllabus');
+      }
+    } catch (error) {
+      console.error('Error deleting syllabus:', error);
+      throw error;
+    }
   }
 
   async getTopics(syllabusId: string): Promise<Topic[]> {
-    return apiClient.get<Topic[]>(`/syllabus/${syllabusId}/topics`);
+    try {
+      const url = `${this.getApiUrl()}/syllabus/${syllabusId}/topics`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        return [];
+      }
+
+      const data = await response.json();
+      return Array.isArray(data) ? data : [];
+    } catch (error) {
+      console.error('Error fetching topics:', error);
+      return [];
+    }
   }
 }
 

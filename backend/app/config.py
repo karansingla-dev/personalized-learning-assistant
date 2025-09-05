@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Learning Assistant"
     
     # Security
-    SECRET_KEY: str = Field(..., env="SECRET_KEY")
+    SECRET_KEY: str = Field(default="your-secret-key-change-in-production", env="SECRET_KEY")
     ALGORITHM: str = Field(default="HS256", env="ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
     
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     CLERK_WEBHOOK_SECRET: Optional[str] = Field(None, env="CLERK_WEBHOOK_SECRET")
     
     # Database
-    MONGODB_URL: str = Field(..., env="MONGODB_URL")
+    MONGODB_URL: str = Field(default="mongodb://localhost:27017", env="MONGODB_URL")
     DATABASE_NAME: str = Field(default="learning_assistant", env="DATABASE_NAME")
     
     # MongoDB Atlas specific settings
@@ -53,10 +53,24 @@ class Settings(BaseSettings):
     NOTES_COLLECTION: str = "notes"
     PROGRESS_COLLECTION: str = "progress"
     STUDY_PLANS_COLLECTION: str = "study_plans"
+    TOPIC_CONTENT_COLLECTION: str = "topic_content"
+    LEARNING_RESOURCES_COLLECTION: str = "learning_resources"
     
     # Google Gemini
-    GEMINI_API_KEY: str = Field(..., env="GEMINI_API_KEY")
+    GEMINI_API_KEY: Optional[str] = Field(None, env="GEMINI_API_KEY")
     GEMINI_MODEL: str = Field(default="gemini-pro", env="GEMINI_MODEL")
+    
+    # YouTube API (Optional - for better video recommendations)
+    YOUTUBE_API_KEY: Optional[str] = Field(None, env="YOUTUBE_API_KEY")
+    
+    # Educational Content Settings
+    MAX_VIDEOS_PER_TOPIC: int = Field(default=10, env="MAX_VIDEOS_PER_TOPIC")
+    MAX_ARTICLES_PER_TOPIC: int = Field(default=10, env="MAX_ARTICLES_PER_TOPIC")
+    CONTENT_CACHE_HOURS: int = Field(default=24, env="CONTENT_CACHE_HOURS")
+    
+    # Content Sources
+    ENABLE_YOUTUBE_SEARCH: bool = Field(default=True, env="ENABLE_YOUTUBE_SEARCH")
+    ENABLE_ARTICLE_SEARCH: bool = Field(default=True, env="ENABLE_ARTICLE_SEARCH")
     
     # File Upload
     MAX_FILE_SIZE: int = Field(default=10485760, env="MAX_FILE_SIZE")  # 10MB
@@ -66,12 +80,12 @@ class Settings(BaseSettings):
     # CORS
     FRONTEND_URL: str = Field(default="http://localhost:3000", env="FRONTEND_URL")
     CORS_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:3001"],
+        default=["http://localhost:3000", "http://localhost:3001", "*"],
         env="CORS_ORIGINS"
     )
     
     # Rate Limiting
-    RATE_LIMIT_ENABLED: bool = Field(default=True, env="RATE_LIMIT_ENABLED")
+    RATE_LIMIT_ENABLED: bool = Field(default=False, env="RATE_LIMIT_ENABLED")
     RATE_LIMIT_REQUESTS: int = Field(default=100, env="RATE_LIMIT_REQUESTS")
     RATE_LIMIT_PERIOD: int = Field(default=60, env="RATE_LIMIT_PERIOD")  # seconds
     
@@ -98,6 +112,8 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = True
+        # Allow any extra fields from environment
+        extra = "ignore"  # This allows extra env vars without errors
         
     def get_mongodb_url_with_db(self) -> str:
         """Get MongoDB URL with database name."""
