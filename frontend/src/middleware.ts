@@ -6,7 +6,7 @@ const isPublicRoute = createRouteMatcher([
   '/',
   '/auth/sign-in',
   '/auth/sign-up',
-  '/test',
+  '/auth/sso-callback',
 ]);
 
 // Simply make auth available everywhere without forcing protection

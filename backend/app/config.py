@@ -1,6 +1,6 @@
 # backend/app/config.py
 """
-Application configuration management.
+Application configuration and settings.
 Handles all environment variables and settings.
 """
 
@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     SECRET_KEY: str = Field(..., env="SECRET_KEY")
     ALGORITHM: str = Field(default="HS256", env="ALGORITHM")
     ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(default=30, env="ACCESS_TOKEN_EXPIRE_MINUTES")
+    
+    # Clerk Authentication
+    CLERK_SECRET_KEY: Optional[str] = Field(None, env="CLERK_SECRET_KEY")
+    CLERK_WEBHOOK_SECRET: Optional[str] = Field(None, env="CLERK_WEBHOOK_SECRET")
     
     # Database
     MONGODB_URL: str = Field(..., env="MONGODB_URL")
@@ -65,9 +69,6 @@ class Settings(BaseSettings):
         default=["http://localhost:3000", "http://localhost:3001"],
         env="CORS_ORIGINS"
     )
-    
-    # Clerk Auth (for webhook validation)
-    CLERK_WEBHOOK_SECRET: Optional[str] = Field(None, env="CLERK_WEBHOOK_SECRET")
     
     # Rate Limiting
     RATE_LIMIT_ENABLED: bool = Field(default=True, env="RATE_LIMIT_ENABLED")

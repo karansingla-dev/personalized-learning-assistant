@@ -269,6 +269,24 @@ class UserCRUD:
         except Exception as e:
             logger.error(f"Error fetching users: {e}")
             return []
+        
+    @staticmethod
+    async def create_user_dict(user_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Create user from dictionary (for flexibility)."""
+        try:
+            # Insert user
+            result = await database_manager.users_collection.insert_one(user_dict)
+            
+            # Return created user
+            user = await database_manager.users_collection.find_one(
+                {"_id": result.inserted_id}
+            )
+            if user:
+                user["id"] = str(user.pop("_id"))
+            return user
+        except Exception as e:
+            logger.error(f"Error creating user: {e}")
+            return None
 
 
 # Export instance for easy access
