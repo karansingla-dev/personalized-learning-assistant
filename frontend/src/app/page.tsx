@@ -1,547 +1,816 @@
-// frontend/src/app/onboarding/page.tsx
+// frontend/src/app/page.tsx
 'use client';
 
-import { useUser, useAuth } from '@clerk/nextjs';
+import { useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
-import { authService } from '@/lib/api/auth.service';
-import { showToast } from '@/lib/toast';
 
-interface OnboardingFormData {
-  // Step 1: Personal Info
-  firstName: string;
-  lastName: string;
-  age: string;
-  dateOfBirth: string;
-  
-  // Step 2: Educational Info
-  phoneNumber: string;
-  classLevel: string;
-  school: string;
-  competitiveExam: string;
-  
-  // Step 3: Location Info
-  country: string;
-  state: string;
-  city: string;
-}
-
-interface FormErrors {
-  [key: string]: string;
-}
-
-export default function OnboardingPage() {
-  const { isLoaded: userLoaded, user } = useUser();
-  const { isLoaded: authLoaded, userId } = useAuth();
+export default function LandingPage() {
+  const { isSignedIn } = useAuth();
   const router = useRouter();
-  
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<FormErrors>({});
-  
-  const [formData, setFormData] = useState<OnboardingFormData>({
-    firstName: '',
-    lastName: '',
-    age: '',
-    dateOfBirth: '',
-    phoneNumber: '',
-    classLevel: '',
-    school: '',
-    competitiveExam: 'none',
-    country: '',
-    state: '',
-    city: '',
-  });
+  const [activeTestimonial, setActiveTestimonial] = useState(0);
+  const [selectedSubject, setSelectedSubject] = useState('mathematics');
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  // Pre-fill user data from Clerk
   useEffect(() => {
-    if (user) {
-      setFormData(prev => ({
-        ...prev,
-        firstName: user.firstName || '',
-        lastName: user.lastName || '',
-      }));
+    const interval = setInterval(() => {
+      setActiveTestimonial((prev) => (prev + 1) % 3);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const testimonials = [
+    {
+      name: "Sarah Chen",
+      grade: "12th Grade",
+      score: "95%",
+      image: "👩‍🎓",
+      text: "From failing to top of my class! The AI explanations are better than any tutor I've had.",
+      improvement: "+45%"
+    },
+    {
+      name: "Rahul Kumar", 
+      grade: "JEE Aspirant",
+      score: "AIR 127",
+      image: "👨‍🎓",
+      text: "Cracked JEE Advanced using this app. The personalized study plan was a game-changer!",
+      improvement: "+60%"
+    },
+    {
+      name: "Emily Johnson",
+      grade: "11th Grade", 
+      score: "4.0 GPA",
+      image: "👩‍💻",
+      text: "I finally understand physics! The AI breaks down complex topics so simply.",
+      improvement: "+38%"
     }
-  }, [user]);
-
-  // Redirect if not signed in
-  useEffect(() => {
-    if (authLoaded && !userId) {
-      router.push('/auth/sign-in');
-    }
-  }, [authLoaded, userId, router]);
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear error for this field when user starts typing
-    if (errors[name]) {
-      setErrors(prev => ({ ...prev, [name]: '' }));
-    }
-  };
-
-  const validateStep = (step: number): boolean => {
-    const newErrors: FormErrors = {};
-
-    switch (step) {
-      case 1:
-        if (!formData.firstName.trim()) newErrors.firstName = 'First name is required';
-        if (!formData.lastName.trim()) newErrors.lastName = 'Last name is required';
-        if (!formData.age || parseInt(formData.age) < 5 || parseInt(formData.age) > 100) {
-          newErrors.age = 'Please enter a valid age between 5 and 100';
-        }
-        if (!formData.dateOfBirth) newErrors.dateOfBirth = 'Date of birth is required';
-        break;
-      
-      case 2:
-        if (!formData.phoneNumber.trim()) newErrors.phoneNumber = 'Phone number is required';
-        if (formData.phoneNumber && !/^[+]?[0-9]{10,15}$/.test(formData.phoneNumber.replace(/\s/g, ''))) {
-          newErrors.phoneNumber = 'Please enter a valid phone number';
-        }
-        if (!formData.classLevel) newErrors.classLevel = 'Class level is required';
-        if (!formData.school.trim()) newErrors.school = 'School name is required';
-        if (!formData.competitiveExam) newErrors.competitiveExam = 'Please select an option';
-        break;
-      
-      case 3:
-        if (!formData.country.trim()) newErrors.country = 'Country is required';
-        if (!formData.state.trim()) newErrors.state = 'State is required';
-        if (!formData.city.trim()) newErrors.city = 'City is required';
-        break;
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep(prev => prev + 1);
-    }
-  };
-
-  const handlePrevious = () => {
-    setCurrentStep(prev => prev - 1);
-  };
-
-  const handleSkip = () => {
-    router.push('/dashboard');
-  };
-
-  const handleSubmit = async () => {
-    if (!validateStep(currentStep) || !userId) return;
-
-    setIsSubmitting(true);
-    try {
-      const onboardingData = {
-        clerk_id: userId,
-        age: parseInt(formData.age),
-        date_of_birth: formData.dateOfBirth,
-        phone_number: formData.phoneNumber,
-        class_level: formData.classLevel,
-        school: formData.school,
-        competitive_exam: formData.competitiveExam,
-        country: formData.country,
-        state: formData.state,
-        city: formData.city,
-      };
-
-      await authService.completeOnboarding(onboardingData);
-      
-      showToast.success('Profile completed successfully!');
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Onboarding error:', error);
-      showToast.error('Failed to complete profile. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const steps = [
-    { number: 1, title: 'Personal Info', icon: '👤' },
-    { number: 2, title: 'Education', icon: '🎓' },
-    { number: 3, title: 'Location', icon: '📍' },
   ];
 
-  const classLevels = [
-    { value: '', label: 'Select your class' },
-    { value: '8', label: 'Class 8' },
-    { value: '9', label: 'Class 9' },
-    { value: '10', label: 'Class 10' },
-    { value: '11', label: 'Class 11' },
-    { value: '12', label: 'Class 12' },
-    { value: 'undergraduate', label: 'Undergraduate' },
-    { value: 'postgraduate', label: 'Postgraduate' },
-    { value: 'other', label: 'Other' },
+  const subjects = {
+    mathematics: { icon: "🔢", topics: ["Calculus", "Algebra", "Geometry", "Statistics"] },
+    physics: { icon: "⚛️", topics: ["Mechanics", "Thermodynamics", "Optics", "Quantum"] },
+    chemistry: { icon: "🧪", topics: ["Organic", "Inorganic", "Physical", "Analytical"] },
+    biology: { icon: "🧬", topics: ["Cell Biology", "Genetics", "Ecology", "Anatomy"] },
+    computer: { icon: "💻", topics: ["Programming", "Algorithms", "Data Structures", "AI/ML"] }
+  };
+
+  const faqs = [
+    {
+      question: "Is it really free?",
+      answer: "Yes! Basic plan is 100% free forever. Upload unlimited syllabi and get AI-powered explanations. No credit card required."
+    },
+    {
+      question: "How does the AI understand my syllabus?",
+      answer: "Our AI is trained on millions of educational documents. It analyzes your syllabus, identifies key topics, and creates personalized learning paths instantly."
+    },
+    {
+      question: "Can it help with competitive exams?",
+      answer: "Absolutely! We have specialized modules for JEE, NEET, SAT, CAT, and more. The AI adapts to exam patterns and provides targeted practice."
+    },
+    {
+      question: "How fast can I see results?",
+      answer: "Most students see improvement within 2 weeks. Our AI tracks your progress and continuously optimizes your learning path for maximum efficiency."
+    }
   ];
-
-  const competitiveExams = [
-    { value: 'none', label: 'Not preparing for any' },
-    { value: 'jee', label: 'JEE (Engineering)' },
-    { value: 'neet', label: 'NEET (Medical)' },
-    { value: 'cat', label: 'CAT (MBA)' },
-    { value: 'gate', label: 'GATE' },
-    { value: 'upsc', label: 'UPSC (Civil Services)' },
-    { value: 'banking', label: 'Banking Exams' },
-    { value: 'ssc', label: 'SSC' },
-    { value: 'other', label: 'Other' },
-  ];
-
-  if (!userLoaded || !authLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-700 font-medium">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!user || !userId) {
-    return null;
-  }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4">
-      <div className="max-w-2xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Complete Your Profile
-          </h1>
-          <p className="text-gray-600">
-            Help us personalize your learning experience
-          </p>
+    <div className="min-h-screen bg-black overflow-hidden">
+      {/* Animated Background */}
+      <div className="fixed inset-0">
+        {/* Gradient Orbs */}
+        <div className="absolute top-0 -left-4 w-96 h-96 bg-purple-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob"></div>
+        <div className="absolute top-0 -right-4 w-96 h-96 bg-yellow-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute -bottom-8 left-20 w-96 h-96 bg-pink-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-4000"></div>
+        <div className="absolute bottom-0 right-20 w-96 h-96 bg-blue-500 rounded-full mix-blend-screen filter blur-3xl opacity-30 animate-blob animation-delay-6000"></div>
+        
+        {/* Moving gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 opacity-50"></div>
+        
+        {/* Grid pattern */}
+        <div className="absolute inset-0" style={{
+          backgroundImage: `linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                           linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px)`,
+          backgroundSize: '50px 50px'
+        }}></div>
+        
+        {/* Floating particles */}
+        <div className="absolute inset-0">
+          {[...Array(20)].map((_, i) => (
+            <div
+              key={i}
+              className="absolute w-2 h-2 bg-white rounded-full animate-float"
+              style={{
+                left: `${Math.random() * 100}%`,
+                top: `${Math.random() * 100}%`,
+                animationDelay: `${Math.random() * 10}s`,
+                animationDuration: `${10 + Math.random() * 20}s`
+              }}
+            ></div>
+          ))}
         </div>
+      </div>
 
-        {/* Progress Steps */}
-        <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
-          <div className="flex justify-between items-center">
-            {steps.map((step, index) => (
-              <div key={step.number} className="flex items-center flex-1">
-                <div className="flex flex-col items-center">
-                  <div className={`
-                    w-12 h-12 rounded-full flex items-center justify-center font-semibold text-lg
-                    ${currentStep >= step.number 
-                      ? 'bg-blue-600 text-white' 
-                      : 'bg-gray-200 text-gray-500'}
-                  `}>
-                    <span className="text-xl">{step.icon}</span>
-                  </div>
-                  <span className={`mt-2 text-sm ${currentStep >= step.number ? 'text-blue-600 font-medium' : 'text-gray-500'}`}>
-                    {step.title}
+      {/* Navigation */}
+      <nav className="relative z-50 bg-black/20 backdrop-blur-xl border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between items-center py-4">
+            <div className="flex items-center">
+              <h1 className="text-3xl font-bold">
+                <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-pink-500 bg-clip-text text-transparent animate-gradient">
+                  LearnSmart
+                </span>
+                <span className="text-white ml-2">AI</span>
+                <span className="inline-block ml-2 px-2 py-1 text-xs bg-gradient-to-r from-yellow-400 to-orange-500 text-black rounded-full font-bold animate-pulse">
+                  BETA
+                </span>
+              </h1>
+            </div>
+            <div className="flex items-center gap-6">
+              {isSignedIn ? (
+                <>
+                  <Link href="/dashboard" className="text-white/80 hover:text-white font-medium transition-all hover:scale-105">
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={() => router.push('/dashboard')}
+                    className="relative group"
+                  >
+                    <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-200"></div>
+                    <div className="relative px-6 py-3 bg-black rounded-lg leading-none flex items-center">
+                      <span className="text-white font-semibold">Launch App →</span>
+                    </div>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/auth/sign-in" className="text-white/80 hover:text-white font-medium transition-all hover:scale-105">
+                    Sign In
+                  </Link>
+                  <button
+                    onClick={() => router.push('/auth/sign-up')}
+                    className="relative group"
+                  >
+                    <div className="absolute -inset-1 bg-gradient-to-r from-purple-600 to-pink-600 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-200 group-hover:animate-pulse"></div>
+                    <div className="relative px-6 py-3 bg-black rounded-lg leading-none flex items-center">
+                      <span className="text-white font-semibold">Get Started Free</span>
+                    </div>
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero Section */}
+      <section className="relative z-40 pt-32 pb-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Floating badge */}
+          <div className="flex justify-center mb-8">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-500/20 to-pink-500/20 backdrop-blur-xl rounded-full border border-white/20 animate-bounce-slow">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+              </span>
+              <span className="text-white text-sm font-medium">🎯 10,000+ Students Already Learning!</span>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <h1 className="text-6xl sm:text-7xl lg:text-8xl font-black mb-8 leading-tight">
+              <span className="block text-white">From</span>
+              <span className="block mt-2">
+                <span className="inline-block transform hover:scale-110 transition-transform cursor-pointer bg-gradient-to-r from-red-500 to-orange-500 bg-clip-text text-transparent line-through opacity-75">
+                  Failing
+                </span>
+              </span>
+              <span className="block text-white mt-2">to</span>
+              <span className="block mt-2">
+                <span className="inline-block transform hover:scale-110 transition-transform cursor-pointer bg-gradient-to-r from-green-400 to-emerald-500 bg-clip-text text-transparent animate-gradient text-7xl sm:text-8xl">
+                  Top 1%
+                </span>
+              </span>
+            </h1>
+            
+            <p className="text-xl sm:text-2xl text-gray-300 mb-12 max-w-3xl mx-auto leading-relaxed">
+              AI that understands YOU. Upload any syllabus and get
+              <span className="text-white font-semibold"> instant personalized tutoring</span> that 
+              <span className="text-white font-semibold"> guarantees results</span>
+            </p>
+
+            {/* CTA Buttons */}
+            <div className="flex gap-6 justify-center mb-12">
+              {isSignedIn ? (
+                <button
+                  onClick={() => router.push('/dashboard')}
+                  className="group relative px-8 py-5 overflow-hidden rounded-2xl bg-white text-black font-bold text-lg transition-all hover:scale-105 transform"
+                >
+                  <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-pink-600 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                  <span className="relative group-hover:text-white transition-colors duration-300">
+                    Open Dashboard →
                   </span>
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => router.push('/auth/sign-up')}
+                    className="group relative px-8 py-5 overflow-hidden rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-lg transition-all hover:scale-105 transform hover:shadow-2xl hover:shadow-purple-500/25"
+                  >
+                    <div className="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
+                    <span className="relative group-hover:text-black transition-colors duration-300 flex items-center gap-2">
+                      Start Free - No Card Required
+                      <span className="group-hover:translate-x-1 transition-transform">→</span>
+                    </span>
+                  </button>
+                  
+                  <button
+                    onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}
+                    className="px-8 py-5 rounded-2xl bg-white/10 backdrop-blur-xl text-white font-bold text-lg border border-white/20 hover:bg-white/20 transition-all hover:scale-105 transform"
+                  >
+                    See How It Works
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Live Stats Ticker */}
+            <div className="flex justify-center gap-12 mt-16">
+              {[
+                { value: '10,247', label: 'Active Students', change: '+127 today' },
+                { value: '95.8%', label: 'Success Rate', change: '↑ 2.3%' },
+                { value: '4.9★', label: 'App Rating', change: '2,847 reviews' }
+              ].map((stat, index) => (
+                <div key={index} className="text-center group cursor-pointer">
+                  <div className="text-4xl font-bold text-white group-hover:scale-110 transition-transform">
+                    {stat.value}
+                  </div>
+                  <div className="text-gray-400 text-sm mt-1">{stat.label}</div>
+                  <div className="text-green-400 text-xs mt-1 opacity-75">{stat.change}</div>
                 </div>
-                {index < steps.length - 1 && (
-                  <div className={`flex-1 h-1 mx-4 ${currentStep > step.number ? 'bg-blue-600' : 'bg-gray-200'}`} />
-                )}
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Problem/Solution Section - NEW */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent via-purple-900/20 to-transparent">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-16 items-center">
+            {/* Problem Side */}
+            <div className="text-left">
+              <h2 className="text-4xl font-black text-white mb-8">
+                <span className="text-red-500">87% of students</span> struggle with these problems:
+              </h2>
+              <div className="space-y-4">
+                {[
+                  "😰 Can't understand complex topics from textbooks",
+                  "😴 Boring lectures that don't stick",
+                  "📚 Too much to study, too little time",
+                  "❌ No personalized help when stuck",
+                  "📉 Falling grades despite hard work"
+                ].map((problem, i) => (
+                  <div key={i} className="flex items-center gap-3 text-gray-300 text-lg">
+                    <span className="text-2xl">{problem}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Solution Side */}
+            <div className="text-left">
+              <h2 className="text-4xl font-black text-white mb-8">
+                <span className="text-green-500">LearnSmart AI</span> solves everything:
+              </h2>
+              <div className="space-y-4">
+                {[
+                  "🎯 AI explains like your smartest friend would",
+                  "🚀 Learn 10x faster with visual explanations",
+                  "🧠 Personalized path based on YOUR pace",
+                  "💡 24/7 AI tutor that never gets tired",
+                  "📈 Guaranteed grade improvement in 30 days"
+                ].map((solution, i) => (
+                  <div key={i} className="flex items-center gap-3 text-white text-lg group hover:translate-x-2 transition-transform cursor-pointer">
+                    <span className="text-2xl">{solution}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Student Success Stories - NEW */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Real Students.
+              <span className="bg-gradient-to-r from-yellow-400 to-green-400 bg-clip-text text-transparent"> Real Results.</span>
+            </h2>
+            <p className="text-xl text-gray-400">
+              Join thousands who transformed their grades
+            </p>
+          </div>
+
+          {/* Testimonial Carousel */}
+          <div className="relative max-w-4xl mx-auto">
+            <div className="bg-gray-900/50 backdrop-blur-xl rounded-3xl p-12 border border-white/10">
+              {testimonials.map((testimonial, index) => (
+                <div
+                  key={index}
+                  className={`transition-all duration-500 ${
+                    activeTestimonial === index ? 'block' : 'hidden'
+                  }`}
+                >
+                  <div className="flex items-start gap-6">
+                    <div className="text-6xl">{testimonial.image}</div>
+                    <div className="flex-1">
+                      <p className="text-2xl text-white mb-6 italic">"{testimonial.text}"</p>
+                      <div className="flex items-center gap-6">
+                        <div>
+                          <p className="text-white font-bold">{testimonial.name}</p>
+                          <p className="text-gray-400">{testimonial.grade}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-3xl font-bold text-green-400">{testimonial.improvement}</span>
+                          <span className="text-gray-400">improvement</span>
+                        </div>
+                        <div className="ml-auto">
+                          <span className="text-yellow-400 text-2xl font-bold">{testimonial.score}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Carousel Dots */}
+              <div className="flex justify-center gap-2 mt-8">
+                {[0, 1, 2].map((i) => (
+                  <button
+                    key={i}
+                    onClick={() => setActiveTestimonial(i)}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      activeTestimonial === i ? 'w-8 bg-white' : 'bg-gray-600'
+                    }`}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How It Works - Visual - NEW */}
+      <section id="how-it-works" className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Start Learning in
+              <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"> 60 Seconds</span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                step: "1",
+                title: "Upload Syllabus",
+                description: "Drop any PDF, image, or text file",
+                icon: "📤",
+                time: "10 seconds"
+              },
+              {
+                step: "2", 
+                title: "AI Magic Happens",
+                description: "Our AI analyzes and creates your personalized curriculum",
+                icon: "🤖",
+                time: "30 seconds"
+              },
+              {
+                step: "3",
+                title: "Start Learning!",
+                description: "Get instant explanations, quizzes, and study plans",
+                icon: "🚀",
+                time: "20 seconds"
+              }
+            ].map((item, i) => (
+              <div key={i} className="relative group">
+                <div className="absolute -inset-4 bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl blur-xl opacity-0 group-hover:opacity-50 transition duration-500"></div>
+                <div className="relative bg-gray-900/80 backdrop-blur-xl rounded-2xl p-8 border border-white/10 text-center hover:scale-105 transition-transform">
+                  <div className="text-6xl mb-4">{item.icon}</div>
+                  <div className="text-5xl font-black text-transparent bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text mb-4">
+                    {item.step}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-2">{item.title}</h3>
+                  <p className="text-gray-400 mb-4">{item.description}</p>
+                  <span className="text-green-400 text-sm font-bold">{item.time}</span>
+                </div>
               </div>
             ))}
           </div>
         </div>
+      </section>
 
-        {/* Form */}
-        <div className="bg-white rounded-xl shadow-sm p-8">
-          {/* Step 1: Personal Info */}
-          {currentStep === 1 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">Personal Information</h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    First Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.firstName ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="John"
-                  />
-                  {errors.firstName && (
-                    <p className="mt-1 text-sm text-red-600">{errors.firstName}</p>
-                  )}
-                </div>
+      {/* Subject Coverage - Interactive - NEW */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Master Any
+              <span className="bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent"> Subject</span>
+            </h2>
+            <p className="text-xl text-gray-400">Click to explore what you can learn</p>
+          </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Last Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.lastName ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="Doe"
-                  />
-                  {errors.lastName && (
-                    <p className="mt-1 text-sm text-red-600">{errors.lastName}</p>
-                  )}
-                </div>
+          {/* Subject Selector */}
+          <div className="flex justify-center gap-4 mb-12 flex-wrap">
+            {Object.entries(subjects).map(([key, subject]) => (
+              <button
+                key={key}
+                onClick={() => setSelectedSubject(key)}
+                className={`px-6 py-3 rounded-xl font-bold transition-all transform hover:scale-105 ${
+                  selectedSubject === key
+                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
+              >
+                <span className="text-2xl mr-2">{subject.icon}</span>
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+              </button>
+            ))}
+          </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Age *
-                  </label>
-                  <input
-                    type="number"
-                    name="age"
-                    value={formData.age}
-                    onChange={handleInputChange}
-                    min="5"
-                    max="100"
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.age ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                    placeholder="18"
-                  />
-                  {errors.age && (
-                    <p className="mt-1 text-sm text-red-600">{errors.age}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Date of Birth *
-                  </label>
-                  <input
-                    type="date"
-                    name="dateOfBirth"
-                    value={formData.dateOfBirth}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                      errors.dateOfBirth ? 'border-red-500' : 'border-gray-300'
-                    }`}
-                  />
-                  {errors.dateOfBirth && (
-                    <p className="mt-1 text-sm text-red-600">{errors.dateOfBirth}</p>
-                  )}
-                </div>
+          {/* Topics Display */}
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-gray-900/50 backdrop-blur-xl rounded-2xl p-8 border border-white/10">
+              <h3 className="text-2xl font-bold text-white mb-6">
+                Topics we cover in {selectedSubject.charAt(0).toUpperCase() + selectedSubject.slice(1)}:
+              </h3>
+              <div className="grid grid-cols-2 gap-4">
+                {subjects[selectedSubject as keyof typeof subjects].topics.map((topic, i) => (
+                  <div
+                    key={i}
+                    className="bg-gradient-to-r from-purple-600/20 to-pink-600/20 rounded-xl p-4 border border-white/10 hover:scale-105 transition-transform cursor-pointer"
+                  >
+                    <span className="text-white font-semibold">{topic}</span>
+                  </div>
+                ))}
               </div>
+              <p className="text-center text-gray-400 mt-6">
+                + 100s more topics with detailed explanations
+              </p>
             </div>
-          )}
-
-          {/* Step 2: Educational Info */}
-          {currentStep === 2 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">Educational Information</h2>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  name="phoneNumber"
-                  value={formData.phoneNumber}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.phoneNumber ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="+91 98765 43210"
-                />
-                {errors.phoneNumber && (
-                  <p className="mt-1 text-sm text-red-600">{errors.phoneNumber}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Class/Level *
-                </label>
-                <select
-                  name="classLevel"
-                  value={formData.classLevel}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.classLevel ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  {classLevels.map(level => (
-                    <option key={level.value} value={level.value}>
-                      {level.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.classLevel && (
-                  <p className="mt-1 text-sm text-red-600">{errors.classLevel}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  School/Institution Name *
-                </label>
-                <input
-                  type="text"
-                  name="school"
-                  value={formData.school}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.school ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Enter your school or college name"
-                />
-                {errors.school && (
-                  <p className="mt-1 text-sm text-red-600">{errors.school}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Preparing for Competitive Exam? *
-                </label>
-                <select
-                  name="competitiveExam"
-                  value={formData.competitiveExam}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.competitiveExam ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                >
-                  {competitiveExams.map(exam => (
-                    <option key={exam.value} value={exam.value}>
-                      {exam.label}
-                    </option>
-                  ))}
-                </select>
-                {errors.competitiveExam && (
-                  <p className="mt-1 text-sm text-red-600">{errors.competitiveExam}</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Location Info */}
-          {currentStep === 3 && (
-            <div className="space-y-6">
-              <h2 className="text-2xl font-semibold text-gray-900 mb-6">Location Information</h2>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Country *
-                </label>
-                <input
-                  type="text"
-                  name="country"
-                  value={formData.country}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.country ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="India"
-                />
-                {errors.country && (
-                  <p className="mt-1 text-sm text-red-600">{errors.country}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  State *
-                </label>
-                <input
-                  type="text"
-                  name="state"
-                  value={formData.state}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.state ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Maharashtra"
-                />
-                {errors.state && (
-                  <p className="mt-1 text-sm text-red-600">{errors.state}</p>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  City *
-                </label>
-                <input
-                  type="text"
-                  name="city"
-                  value={formData.city}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    errors.city ? 'border-red-500' : 'border-gray-300'
-                  }`}
-                  placeholder="Mumbai"
-                />
-                {errors.city && (
-                  <p className="mt-1 text-sm text-red-600">{errors.city}</p>
-                )}
-              </div>
-
-              {/* Summary Preview */}
-              <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-                <h3 className="font-medium text-blue-900 mb-2">Profile Summary</h3>
-                <p className="text-sm text-blue-700">
-                  <strong>Name:</strong> {formData.firstName} {formData.lastName}<br />
-                  <strong>Education:</strong> {formData.classLevel ? classLevels.find(l => l.value === formData.classLevel)?.label : 'Not specified'}<br />
-                  <strong>Location:</strong> {formData.city}, {formData.state}, {formData.country}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Navigation Buttons */}
-          <div className="flex justify-between mt-8">
-            {currentStep > 1 ? (
-              <button
-                onClick={handlePrevious}
-                className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
-              >
-                Previous
-              </button>
-            ) : (
-              <button
-                onClick={handleSkip}
-                className="px-6 py-3 text-gray-500 hover:text-gray-700 font-medium"
-              >
-                Skip for now
-              </button>
-            )}
-            
-            {currentStep < 3 ? (
-              <button
-                onClick={handleNext}
-                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition"
-              >
-                Next Step
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={isSubmitting}
-                className="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition flex items-center"
-              >
-                {isSubmitting ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Completing...
-                  </>
-                ) : (
-                  'Complete Setup'
-                )}
-              </button>
-            )}
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Features Section - Enhanced */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-20">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Superpowers for
+              <span className="bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent"> Students</span>
+            </h2>
+            <p className="text-xl text-gray-400">
+              Everything you need to ace your exams
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              {
+                icon: '🧠',
+                title: 'AI Brain',
+                description: 'Upload any syllabus and get instant AI-generated study materials',
+                color: 'from-blue-500 to-cyan-500'
+              },
+              {
+                icon: '⚡',
+                title: 'Lightning Fast',
+                description: 'Learn complex topics in minutes with personalized AI explanations',
+                color: 'from-purple-500 to-pink-500'
+              },
+              {
+                icon: '📈',
+                title: 'Track Progress',
+                description: 'Real-time analytics to monitor your learning journey',
+                color: 'from-orange-500 to-red-500'
+              },
+              {
+                icon: '🎯',
+                title: 'Smart Quizzes',
+                description: 'AI-generated practice tests that adapt to your level',
+                color: 'from-green-500 to-emerald-500'
+              },
+              {
+                icon: '📱',
+                title: 'Study Anywhere',
+                description: 'Mobile-friendly platform to learn on the go',
+                color: 'from-indigo-500 to-purple-500'
+              },
+              {
+                icon: '🏆',
+                title: 'Gamified Learning',
+                description: 'Earn points, badges, and compete with friends',
+                color: 'from-yellow-500 to-orange-500'
+              }
+            ].map((feature, index) => (
+              <div
+                key={index}
+                className="group relative"
+              >
+                <div className={`absolute -inset-1 bg-gradient-to-r ${feature.color} rounded-2xl blur-xl opacity-0 group-hover:opacity-75 transition duration-500`}></div>
+                <div className="relative bg-gray-900/50 backdrop-blur-xl rounded-2xl p-8 border border-white/10 hover:border-white/20 transition-all hover:transform hover:scale-105">
+                  <div className="text-5xl mb-4 transform group-hover:scale-110 group-hover:rotate-12 transition-transform">
+                    {feature.icon}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white mb-3">
+                    {feature.title}
+                  </h3>
+                  <p className="text-gray-400 leading-relaxed">
+                    {feature.description}
+                  </p>
+                  <div className="mt-4 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+                    <span>Learn more</span>
+                    <span className="group-hover:translate-x-2 transition-transform">→</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing - Emphasize FREE - NEW */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-transparent via-blue-900/20 to-transparent">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Start FREE.
+              <span className="bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent"> Stay FREE.</span>
+            </h2>
+            <p className="text-xl text-gray-400">No credit card. No tricks. Just learning.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8">
+            {/* Free Plan */}
+            <div className="relative group">
+              <div className="absolute -inset-4 bg-gradient-to-r from-green-600 to-emerald-600 rounded-3xl blur-xl opacity-50 group-hover:opacity-75 transition duration-500"></div>
+              <div className="relative bg-gray-900 rounded-3xl p-8 border-2 border-green-500">
+                <div className="text-center mb-8">
+                  <span className="text-green-400 font-bold text-sm">MOST POPULAR</span>
+                  <h3 className="text-3xl font-bold text-white mt-2">Free Forever</h3>
+                  <div className="mt-4">
+                    <span className="text-5xl font-black text-white">₹0</span>
+                    <span className="text-gray-400">/month</span>
+                  </div>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  {[
+                    "✅ Unlimited syllabus uploads",
+                    "✅ AI explanations for any topic",
+                    "✅ Basic quizzes & tests",
+                    "✅ Progress tracking",
+                    "✅ Mobile app access"
+                  ].map((item, i) => (
+                    <li key={i} className="text-white">{item}</li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => router.push('/auth/sign-up')}
+                  className="w-full py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl font-bold hover:scale-105 transition-transform"
+                >
+                  Start Learning Free
+                </button>
+              </div>
+            </div>
+
+            {/* Pro Plan */}
+            <div className="relative">
+              <div className="bg-gray-900/80 backdrop-blur-xl rounded-3xl p-8 border border-white/10">
+                <div className="text-center mb-8">
+                  <span className="text-purple-400 font-bold text-sm">FOR SERIOUS LEARNERS</span>
+                  <h3 className="text-3xl font-bold text-white mt-2">Pro</h3>
+                  <div className="mt-4">
+                    <span className="text-5xl font-black text-white">₹99</span>
+                    <span className="text-gray-400">/month</span>
+                  </div>
+                </div>
+                <ul className="space-y-4 mb-8">
+                  {[
+                    "✨ Everything in Free",
+                    "✨ Advanced AI tutor",
+                    "✨ Unlimited practice tests",
+                    "✨ Exam preparation mode",
+                    "✨ Priority support",
+                    "✨ Certificates on completion"
+                  ].map((item, i) => (
+                    <li key={i} className="text-gray-300">{item}</li>
+                  ))}
+                </ul>
+                <button className="w-full py-4 bg-gray-800 text-gray-400 rounded-xl font-bold cursor-not-allowed">
+                  Coming Soon
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section - NEW */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-5xl font-black text-white mb-6">
+              Questions?
+              <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent"> We've Got Answers</span>
+            </h2>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, i) => (
+              <div
+                key={i}
+                className="bg-gray-900/50 backdrop-blur-xl rounded-2xl border border-white/10 overflow-hidden"
+              >
+                <button
+                  onClick={() => setOpenFaq(openFaq === i ? null : i)}
+                  className="w-full px-8 py-6 text-left flex items-center justify-between hover:bg-white/5 transition-colors"
+                >
+                  <span className="text-xl text-white font-semibold">{faq.question}</span>
+                  <span className={`text-3xl text-white transition-transform ${openFaq === i ? 'rotate-45' : ''}`}>
+                    +
+                  </span>
+                </button>
+                <div className={`px-8 overflow-hidden transition-all ${openFaq === i ? 'py-6' : 'max-h-0'}`}>
+                  <p className="text-gray-300 text-lg">{faq.answer}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Final CTA - Enhanced */}
+      <section className="relative z-40 py-32 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-4xl mx-auto text-center">
+          <div className="relative">
+            <div className="absolute -inset-4 bg-gradient-to-r from-yellow-600 via-orange-600 to-red-600 rounded-3xl blur-2xl opacity-50 animate-pulse"></div>
+            <div className="relative bg-black/50 backdrop-blur-xl rounded-3xl p-12 border border-white/10">
+              <h2 className="text-5xl sm:text-6xl font-black text-white mb-8">
+                Your Future is Waiting
+                <span className="block mt-2 bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 bg-clip-text text-transparent">
+                  Don't Let it Wait
+                </span>
+              </h2>
+              <p className="text-2xl text-gray-300 mb-12">
+                Join 10,000+ students already transforming their grades
+              </p>
+              
+              {!isSignedIn && (
+                <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+                  <button
+                    onClick={() => router.push('/auth/sign-up')}
+                    className="group relative px-12 py-6 overflow-hidden rounded-2xl font-bold text-xl transition-all hover:scale-105 transform"
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 animate-gradient"></div>
+                    <span className="relative text-black flex items-center gap-2">
+                      Start Free Now
+                      <span className="group-hover:translate-x-2 transition-transform">→</span>
+                    </span>
+                  </button>
+                  
+                  <div className="text-gray-400">
+                    <div className="flex items-center gap-2">
+                      <span className="text-green-400">✓</span> No credit card
+                      <span className="text-green-400">✓</span> Free forever
+                      <span className="text-green-400">✓</span> Cancel anytime
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer - Enhanced */}
+      <footer className="relative z-40 border-t border-white/10 py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-4 gap-8 mb-12">
+            <div>
+              <h3 className="text-2xl font-bold text-white mb-4">LearnSmart AI</h3>
+              <p className="text-gray-400">AI-powered learning for the next generation</p>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Product</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">Features</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">FAQ</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Company</h4>
+              <ul className="space-y-2 text-gray-400">
+                <li><a href="#" className="hover:text-white transition-colors">About</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Blog</a></li>
+                <li><a href="#" className="hover:text-white transition-colors">Careers</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4 className="text-white font-semibold mb-4">Connect</h4>
+              <div className="flex gap-4">
+                {['📧', '🐦', '💬', '📱'].map((icon, i) => (
+                  <button
+                    key={i}
+                    className="text-2xl hover:scale-110 transition-transform"
+                  >
+                    {icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-white/10 pt-8 text-center">
+            <p className="text-gray-400">© 2024 LearnSmart AI. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+
+      {/* Add custom styles */}
+      <style jsx>{`
+        @keyframes blob {
+          0%, 100% {
+            transform: translate(0px, 0px) scale(1);
+          }
+          33% {
+            transform: translate(30px, -50px) scale(1.1);
+          }
+          66% {
+            transform: translate(-20px, 20px) scale(0.9);
+          }
+        }
+        
+        @keyframes float {
+          0%, 100% {
+            transform: translateY(0px);
+          }
+          50% {
+            transform: translateY(-20px);
+          }
+        }
+        
+        @keyframes gradient {
+          0%, 100% {
+            background-position: 0% 50%;
+          }
+          50% {
+            background-position: 100% 50%;
+          }
+        }
+        
+        .animate-blob {
+          animation: blob 7s infinite;
+        }
+        
+        .animate-float {
+          animation: float linear infinite;
+        }
+        
+        .animate-gradient {
+          background-size: 200% 200%;
+          animation: gradient 3s ease infinite;
+        }
+        
+        .animation-delay-200 {
+          animation-delay: 200ms;
+        }
+        
+        .animation-delay-400 {
+          animation-delay: 400ms;
+        }
+        
+        .animation-delay-2000 {
+          animation-delay: 2s;
+        }
+        
+        .animation-delay-4000 {
+          animation-delay: 4s;
+        }
+        
+        .animation-delay-6000 {
+          animation-delay: 6s;
+        }
+        
+        .animate-bounce-slow {
+          animation: bounce 3s infinite;
+        }
+      `}</style>
     </div>
   );
 }
