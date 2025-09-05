@@ -1,86 +1,138 @@
 // frontend/src/app/auth/sso-callback/page.tsx
 'use client';
 
-import { useEffect } from 'react';
-import { useSignUp, useSignIn } from '@clerk/nextjs';
+import { useEffect, useState } from 'react';
+import { useClerk, useUser } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 
 export default function SSOCallbackPage() {
-  const { signUp, setActive: setActiveSignUp } = useSignUp();
-  const { signIn, setActive: setActiveSignIn } = useSignIn();
+  const { user, isLoaded } = useUser();
+  const clerk = useClerk();
   const router = useRouter();
+  const [error, setError] = useState('');
+  const [debugInfo, setDebugInfo] = useState<any>({});
 
   useEffect(() => {
-    const handleCallback = async () => {
+    const syncWithBackend = async () => {
+      // Wait for Clerk to load
+      if (!isLoaded) {
+        console.log('Waiting for Clerk to load...');
+        return;
+      }
+
+      // Check if we have a user
+      if (!user) {
+        console.log('No user found, redirecting to sign-in...');
+        router.push('/auth/sign-in');
+        return;
+      }
+
+      console.log('User found:', {
+        id: user.id,
+        email: user.primaryEmailAddress?.emailAddress,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+        createdAt: user.createdAt,
+      });
+
+      setDebugInfo({
+        userId: user.id,
+        email: user.primaryEmailAddress?.emailAddress,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        username: user.username,
+      });
+
       try {
-        // Check if this is a sign-up flow
-        if (signUp?.status === 'complete') {
-          await setActiveSignUp({ session: signUp.createdSessionId });
-          
-          // Sync with backend
-          await syncNewUserWithBackend(signUp.createdUserId!);
-          
-          router.push('/onboarding');
-          return;
-        }
+        // Prepare user data for backend
+        const userData = {
+          clerk_id: user.id,
+          email: user.primaryEmailAddress?.emailAddress || user.emailAddresses[0]?.emailAddress || '',
+          first_name: user.firstName || '',
+          last_name: user.lastName || '',
+          username: user.username || user.primaryEmailAddress?.emailAddress?.split('@')[0] || `user_${Date.now()}`,
+        };
 
-        // Check if this is a sign-in flow
-        if (signIn?.status === 'complete') {
-          await setActiveSignIn({ session: signIn.createdSessionId });
-          
-          // Check onboarding status
-          const onboardingComplete = await checkOnboardingStatus(signIn.createdSessionId!);
-          
-          router.push(onboardingComplete ? '/dashboard' : '/onboarding');
-          return;
-        }
+        console.log('Sending to backend:', userData);
 
-        // If neither is complete, redirect to sign-in
-        router.push('/auth/sign-in');
+        // Try to register the user
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/register`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(userData),
+        });
+
+        const responseData = await response.json();
+        console.log('Backend response:', responseData);
+
+        if (response.ok) {
+          console.log('Registration successful');
+          // Check if onboarding is needed
+          const isNewUser = new Date(user.createdAt).getTime() > Date.now() - 60000; // Created in last minute
+          router.push(isNewUser ? '/onboarding' : '/dashboard');
+        } else if (response.status === 409) {
+          // User already exists, try login
+          console.log('User exists, attempting login...');
+          const loginResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ clerk_id: user.id }),
+          });
+
+          const loginData = await loginResponse.json();
+          console.log('Login response:', loginData);
+
+          if (loginResponse.ok) {
+            router.push(loginData.redirect_to || '/dashboard');
+          } else {
+            throw new Error('Login failed');
+          }
+        } else {
+          throw new Error(responseData.detail || 'Registration failed');
+        }
       } catch (error) {
-        console.error('SSO callback error:', error);
-        router.push('/auth/sign-in');
+        console.error('Backend sync error:', error);
+        setError(`Failed to sync with backend: ${error}`);
+        
+        // Still redirect to dashboard after a delay
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 3000);
       }
     };
 
-    handleCallback();
-  }, [signUp, signIn, setActiveSignUp, setActiveSignIn, router]);
-
-  const syncNewUserWithBackend = async (clerkId: string) => {
-    try {
-      // Get user data from Clerk
-      const response = await fetch('http://localhost:8000/api/v1/auth/register-oauth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clerk_id: clerkId }),
-      });
-      
-      if (!response.ok) {
-        console.error('Backend sync failed:', await response.text());
-      }
-    } catch (error) {
-      console.error('Backend sync error:', error);
-    }
-  };
-
-  const checkOnboardingStatus = async (sessionId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/v1/auth/status?session_id=${sessionId}`);
-      if (response.ok) {
-        const data = await response.json();
-        return data.onboarding_completed || false;
-      }
-    } catch (error) {
-      console.error('Failed to check onboarding status:', error);
-    }
-    return false;
-  };
+    syncWithBackend();
+  }, [isLoaded, user, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-gray-700">Completing sign in...</p>
+      <div className="max-w-md w-full bg-white rounded-lg shadow-lg p-6">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-700 font-medium">Completing sign in...</p>
+          
+          {/* Debug info in development */}
+          {process.env.NODE_ENV === 'development' && (
+            <div className="mt-4 text-left bg-gray-100 rounded p-4">
+              <p className="text-xs font-mono text-gray-600">Debug Info:</p>
+              <pre className="text-xs mt-2 overflow-auto">
+                {JSON.stringify(debugInfo, null, 2)}
+              </pre>
+            </div>
+          )}
+          
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded p-3">
+              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-xs text-red-500 mt-2">Redirecting anyway...</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

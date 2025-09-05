@@ -1,173 +1,115 @@
-// frontend/lib/api/client.ts
+// frontend/src/lib/api/client.ts
 /**
- * API client configuration using Axios
- * Handles all API requests to the backend
+ * Base API client configuration
+ * Handles all HTTP requests to the backend
  */
 
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
-import toast from 'react-hot-toast';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
 
-// API base URL from environment or default
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+interface RequestOptions extends RequestInit {
+  params?: Record<string, string>;
+}
 
-// Create axios instance with default config
-export const apiClient: AxiosInstance = axios.create({
-  baseURL: `${API_BASE_URL}/api/v1`,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+class ApiClient {
+  private baseURL: string;
 
-// Function to get Clerk token
-async function getClerkToken(): Promise<string | null> {
-  if (typeof window !== 'undefined' && window.Clerk) {
+  constructor(baseURL: string) {
+    this.baseURL = baseURL;
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<T> {
+    const { params, ...fetchOptions } = options;
+    
+    // Build URL with query params
+    const url = new URL(`${this.baseURL}${endpoint}`);
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        url.searchParams.append(key, value);
+      });
+    }
+
+    // Default headers
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+    };
+
     try {
-      const token = await window.Clerk.session?.getToken();
-      return token || null;
-    } catch (error) {
-      console.error('Error getting Clerk token:', error);
-      return null;
-    }
-  }
-  return null;
-}
+      const response = await fetch(url.toString(), {
+        ...fetchOptions,
+        headers,
+      });
 
-// Request interceptor to add auth token
-apiClient.interceptors.request.use(
-  async (config) => {
-    // Get token from Clerk
-    const token = await getClerkToken();
-    
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error: AxiosError) => {
-    if (error.response) {
-      // Server responded with error
-      const status = error.response.status;
-      const message = (error.response.data as any)?.message || error.message;
-      
-      switch (status) {
-        case 401:
-          // Unauthorized - redirect to login
-          if (typeof window !== 'undefined') {
-            window.location.href = '/sign-in';
-          }
-          break;
-        case 403:
-          toast.error('You do not have permission to perform this action');
-          break;
-        case 404:
-          toast.error('Resource not found');
-          break;
-        case 422:
-          // Validation error
-          const errors = (error.response.data as any)?.detail;
-          if (Array.isArray(errors)) {
-            errors.forEach((err: any) => {
-              toast.error(err.msg || err.message || 'Validation error');
-            });
-          } else if (errors) {
-            toast.error(errors);
-          } else {
-            toast.error(message);
-          }
-          break;
-        case 500:
-          toast.error('Server error. Please try again later.');
-          break;
-        default:
-          toast.error(message || 'An error occurred');
-      }
-    } else if (error.request) {
-      // Request made but no response
-      toast.error('Network error. Please check your connection.');
-    } else {
-      // Something else happened
-      toast.error('An unexpected error occurred');
-    }
-    
-    return Promise.reject(error);
-  }
-);
-
-// Generic request handler
-export async function apiRequest<T>(
-  config: AxiosRequestConfig
-): Promise<T> {
-  try {
-    const response = await apiClient.request<T>(config);
-    return response.data;
-  } catch (error) {
-    throw error;
-  }
-}
-
-// Convenience methods
-export const api = {
-  get: <T>(url: string, config?: AxiosRequestConfig) => 
-    apiRequest<T>({ ...config, method: 'GET', url }),
-  
-  post: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
-    apiRequest<T>({ ...config, method: 'POST', url, data }),
-  
-  put: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
-    apiRequest<T>({ ...config, method: 'PUT', url, data }),
-  
-  patch: <T>(url: string, data?: any, config?: AxiosRequestConfig) =>
-    apiRequest<T>({ ...config, method: 'PATCH', url, data }),
-  
-  delete: <T>(url: string, config?: AxiosRequestConfig) =>
-    apiRequest<T>({ ...config, method: 'DELETE', url }),
-};
-
-// File upload handler
-export async function uploadFile(
-  url: string,
-  file: File,
-  onProgress?: (progress: number) => void
-): Promise<any> {
-  const formData = new FormData();
-  formData.append('file', file);
-  
-  // Get token for file upload
-  const token = await getClerkToken();
-  
-  return apiRequest({
-    method: 'POST',
-    url,
-    data: formData,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    onUploadProgress: (progressEvent) => {
-      if (onProgress && progressEvent.total) {
-        const progress = Math.round(
-          (progressEvent.loaded * 100) / progressEvent.total
+      // Handle errors
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({
+          detail: 'An unexpected error occurred',
+        }));
+        
+        throw new ApiError(
+          error.detail || error.message || 'Request failed',
+          response.status
         );
-        onProgress(progress);
       }
-    },
-  });
+
+      // Handle empty responses
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      return await response.json();
+    } catch (error) {
+      if (error instanceof ApiError) {
+        throw error;
+      }
+      
+      throw new ApiError(
+        error instanceof Error ? error.message : 'Network error',
+        0
+      );
+    }
+  }
+
+  async get<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET', params });
+  }
+
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' });
+  }
 }
 
-// Custom hook for API calls with Clerk token (optional)
-export function useApiClient() {
-  return {
-    api,
-    uploadFile,
-  };
+// Custom error class
+export class ApiError extends Error {
+  constructor(message: string, public status: number) {
+    super(message);
+    this.name = 'ApiError';
+  }
 }
+
+// Create and export the API client instance
+export const apiClient = new ApiClient(API_BASE_URL);

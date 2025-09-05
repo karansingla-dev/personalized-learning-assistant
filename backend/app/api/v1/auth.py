@@ -1,32 +1,36 @@
 # backend/app/api/v1/auth.py
 """
-Updated authentication endpoints with username support.
-This is a minimal update to your existing auth.py file.
+Authentication API endpoints
+Handles user registration and login sync with Clerk
 """
 
-from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime
+from fastapi import APIRouter, HTTPException, status, Request, Depends
+from typing import Dict, Any, Optional
+from app.db.crud.user import user_crud
+from app.models.user import UserCreate, UserResponse
+from pydantic import BaseModel, EmailStr
 import logging
-from app.models.user import (
-    UserCreate,
-    OnboardingData,
-    UserResponse,
-    UserRole
-)
+from datetime import datetime
+import json
+import random
+import string
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
 class UserRegistrationRequest(BaseModel):
-    """User registration request from frontend"""
+    """User registration request from frontend after Clerk signup"""
     clerk_id: str
-    email: str
+    email: EmailStr
     first_name: Optional[str] = ""
     last_name: Optional[str] = ""
-    username: Optional[str] = ""
+    username: Optional[str] = None
+
+
+class UserLoginRequest(BaseModel):
+    """User login request to sync with backend"""
+    clerk_id: str
 
 
 class OnboardingRequest(BaseModel):
@@ -43,108 +47,150 @@ class OnboardingRequest(BaseModel):
     city: Optional[str] = None
 
 
-@router.post("/register", status_code=status.HTTP_201_CREATED)
+def generate_username(email: str) -> str:
+    """Generate a unique username from email"""
+    base_username = email.split('@')[0].lower()
+    # Remove special characters
+    base_username = ''.join(c for c in base_username if c.isalnum())
+    
+    # Add random suffix to ensure uniqueness
+    random_suffix = ''.join(random.choices(string.digits, k=4))
+    return f"{base_username}{random_suffix}"
+
+
+@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register_user(registration_data: UserRegistrationRequest):
-    """Register a new user after Clerk signup"""
+    """
+    Register a new user after Clerk signup (including Google OAuth)
+    This is called from frontend after successful Clerk registration
+    """
     try:
-        from app.db.crud.user import user_crud
-        
-        logger.info(f"Registering user: {registration_data.email}")
+        logger.info(f"Registering new user: {registration_data.email}")
         
         # Check if user already exists
         existing_user = await user_crud.get_user_by_clerk_id(registration_data.clerk_id)
         if existing_user:
-            logger.info(f"User already exists: {registration_data.email}")
-            return {
-                "status": "success",
-                "message": "User already exists",
-                "user_id": str(existing_user.get("_id", "")),
-                "onboarding_completed": existing_user.get("onboarding_completed", False)
-            }
+            logger.info(f"User already exists, returning existing: {registration_data.email}")
+            # Return 409 Conflict so frontend knows to try login instead
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User already exists"
+            )
         
-        # Create user data dictionary
-        user_data = {
-            "clerk_id": registration_data.clerk_id,
-            "email": registration_data.email,
-            "first_name": registration_data.first_name,
-            "last_name": registration_data.last_name,
-            "username": registration_data.username or registration_data.email.split("@")[0],
-            "role": "student",
-            "onboarding_completed": False,
-            "profile": {},
-            "created_at": datetime.utcnow(),
-            "updated_at": datetime.utcnow(),
-            "is_active": True
-        }
+        # Generate username if not provided (Google OAuth case)
+        username = registration_data.username
+        if not username:
+            username = generate_username(registration_data.email)
+            logger.info(f"Generated username: {username}")
         
-        # Insert directly into MongoDB
-        from app.db.mongodb import database_manager
-        result = await database_manager.users_collection.insert_one(user_data)
+        # Ensure username is unique
+        existing_username = await user_crud.get_user_by_username(username)
+        if existing_username:
+            # Add random suffix to make it unique
+            username = f"{username}{random.randint(1000, 9999)}"
+            logger.info(f"Username taken, using: {username}")
         
-        if not result.inserted_id:
+        # Create user data
+        user_data = UserCreate(
+            clerk_id=registration_data.clerk_id,
+            email=registration_data.email,
+            username=username,
+            first_name=registration_data.first_name or "",
+            last_name=registration_data.last_name or "",
+            role="student"  # Default role
+        )
+        
+        # Create user in database
+        created_user = await user_crud.create_user(user_data)
+        
+        if not created_user:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create user"
             )
         
-        logger.info(f"User registered successfully: {registration_data.email}")
+        logger.info(f"User created successfully: {registration_data.email} with username: {username}")
         
+        return UserResponse(**created_user)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to register user"
+        )
+
+
+@router.post("/login", status_code=status.HTTP_200_OK)
+async def sync_user_login(login_data: UserLoginRequest):
+    """
+    Sync user login with backend
+    Called after successful Clerk authentication
+    """
+    try:
+        logger.info(f"Syncing login for clerk_id: {login_data.clerk_id}")
+        
+        # Get user from database
+        user = await user_crud.get_user_by_clerk_id(login_data.clerk_id)
+        
+        if not user:
+            logger.warning(f"User not found for clerk_id: {login_data.clerk_id}")
+            return {
+                "status": "not_found",
+                "message": "User not found. Please complete registration.",
+                "redirect_to": "/auth/sign-up"
+            }
+        
+        # Check if user is active
+        if not user.get("is_active", True):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is deactivated"
+            )
+        
+        # Update last login time
+        await user_crud.update_user_by_clerk_id(
+            login_data.clerk_id,
+            {"last_login": datetime.utcnow()}
+        )
+        
+        # Determine redirect based on onboarding status
+        onboarding_completed = user.get("onboarding_completed", False)
+        redirect_to = "/dashboard" if onboarding_completed else "/onboarding"
+        
+        logger.info(f"User logged in: {user.get('email')}, redirecting to: {redirect_to}")
+        
+        # Return user data with onboarding status
         return {
             "status": "success",
-            "message": "User registered successfully",
-            "user_id": str(result.inserted_id),
-            "onboarding_completed": False
+            "user": UserResponse(**user),
+            "onboarding_completed": onboarding_completed,
+            "redirect_to": redirect_to
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error registering user: {str(e)}")
+        logger.error(f"Error during login sync: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Registration failed: {str(e)}"
+            detail="Failed to sync login"
         )
 
 
-@router.post("/onboarding", status_code=status.HTTP_200_OK)
+@router.post("/complete-onboarding", status_code=status.HTTP_200_OK)
 async def complete_onboarding(onboarding_data: OnboardingRequest):
-    """Complete user onboarding"""
+    """
+    Complete user onboarding process
+    Updates user profile with additional information
+    """
     try:
-        from app.db.crud.user import user_crud
-        from app.db.mongodb import database_manager
+        logger.info(f"Completing onboarding for clerk_id: {onboarding_data.clerk_id}")
         
-        logger.info(f"Processing onboarding for clerk_id: {onboarding_data.clerk_id}")
-        
-        # Check if user exists
-        user = await user_crud.get_user_by_clerk_id(onboarding_data.clerk_id)
-        
-        if not user:
-            # Create a basic user if not exists
-            logger.warning(f"User not found, creating basic user for clerk_id: {onboarding_data.clerk_id}")
-            
-            user_data = {
-                "clerk_id": onboarding_data.clerk_id,
-                "email": f"{onboarding_data.clerk_id}@placeholder.com",
-                "first_name": "",
-                "last_name": "",
-                "username": onboarding_data.clerk_id,
-                "role": "student",
-                "onboarding_completed": False,
-                "profile": {},
-                "created_at": datetime.utcnow(),
-                "updated_at": datetime.utcnow(),
-                "is_active": True
-            }
-            
-            result = await database_manager.users_collection.insert_one(user_data)
-            if not result.inserted_id:
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Failed to create user"
-                )
-        
-        # Prepare profile data
-        profile_data = {
+        # Update user profile
+        update_data = {
             "age": onboarding_data.age,
             "date_of_birth": onboarding_data.date_of_birth,
             "phone_number": onboarding_data.phone_number,
@@ -153,125 +199,38 @@ async def complete_onboarding(onboarding_data: OnboardingRequest):
             "competitive_exam": onboarding_data.competitive_exam,
             "country": onboarding_data.country,
             "state": onboarding_data.state,
-            "city": onboarding_data.city
+            "city": onboarding_data.city,
+            "onboarding_completed": True,
+            "updated_at": datetime.utcnow()
         }
         
         # Remove None values
-        profile_data = {k: v for k, v in profile_data.items() if v is not None}
+        update_data = {k: v for k, v in update_data.items() if v is not None}
         
-        # Update user profile
-        update_result = await database_manager.users_collection.update_one(
-            {"clerk_id": onboarding_data.clerk_id},
-            {
-                "$set": {
-                    "profile": profile_data,
-                    "onboarding_completed": True,
-                    "updated_at": datetime.utcnow()
-                }
-            }
+        updated_user = await user_crud.update_user_by_clerk_id(
+            onboarding_data.clerk_id,
+            update_data
         )
         
-        if update_result.matched_count == 0:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to update user profile"
-            )
-        
-        logger.info(f"Onboarding completed for clerk_id: {onboarding_data.clerk_id}")
-        
-        return {
-            "status": "success",
-            "message": "Onboarding completed successfully",
-            "onboarding_completed": True,
-            "redirect_to": "/dashboard"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error during onboarding: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to complete onboarding: {str(e)}"
-        )
-
-
-@router.post("/login", status_code=status.HTTP_200_OK)
-async def login_user(login_data: dict):
-    """Sync user login with backend"""
-    try:
-        from app.db.crud.user import user_crud
-        
-        clerk_id = login_data.get("clerk_id")
-        
-        if not clerk_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="clerk_id is required"
-            )
-        
-        # Get user from database
-        user = await user_crud.get_user_by_clerk_id(clerk_id)
-        
-        if not user:
-            return {
-                "status": "user_not_found",
-                "message": "User not found. Please complete registration.",
-                "redirect_to": "/auth/sign-up"
-            }
-        
-        # Update last login
-        await user_crud.update_user_by_clerk_id(
-            clerk_id,
-            {"last_login": datetime.utcnow()}
-        )
-        
-        return {
-            "status": "success",
-            "onboarding_completed": user.get("onboarding_completed", False),
-            "redirect_to": "/dashboard" if user.get("onboarding_completed", False) else "/onboarding"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error during login: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed"
-        )
-
-
-@router.get("/me", status_code=status.HTTP_200_OK)
-async def get_current_user(clerk_id: str):
-    """Get current user data by Clerk ID"""
-    try:
-        from app.db.crud.user import user_crud
-        
-        if not clerk_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Clerk ID is required"
-            )
-        
-        user = await user_crud.get_user_by_clerk_id(clerk_id)
-        
-        if not user:
+        if not updated_user:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="User not found"
             )
         
+        logger.info(f"Onboarding completed for user: {updated_user.get('email')}")
+        
         return {
             "status": "success",
-            "user": user
+            "message": "Onboarding completed successfully",
+            "user": UserResponse(**updated_user)
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching user: {str(e)}")
+        logger.error(f"Error completing onboarding: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch user"
+            detail="Failed to complete onboarding"
         )

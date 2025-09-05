@@ -288,6 +288,12 @@ class UserCRUD:
             logger.error(f"Error creating user: {e}")
             return None
 
+async def get_user_by_username(username: str) -> Optional[Dict]:
+    """Get user by username"""
+    user = await users_collection.find_one({"username": username})
+    if user:
+        user["_id"] = str(user["_id"])
+    return user
 
 # Export instance for easy access
 user_crud = UserCRUD()
