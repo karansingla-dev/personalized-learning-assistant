@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { showToast } from '@/lib/toast';
+import { contentService, progressService } from '@/lib/api';
 
 interface LearningResource {
   title: string;
@@ -56,43 +57,34 @@ export default function TopicDetailPage() {
     }
   }, [topicId]);
 
-  const fetchTopicContent = async () => {
-    try {
-      setIsLoading(true);
-      const response = await fetch(`http://localhost:8000/api/v1/topics/${topicId}/content`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTopicContent(data);
-        setIsCompleted(data.is_completed || false);
-      } else {
-        showToast.error('Failed to load topic content');
-      }
-    } catch (error) {
-      console.error('Error fetching topic content:', error);
-      showToast.error('Error loading content');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+const fetchTopicContent = async () => {
+  try {
+    setIsLoading(true);
+    // FIX: Use service method
+    const data = await contentService.getTopicContent(topicId);
+    setTopicContent(data);
+    setIsCompleted(data.is_completed || false);
+  } catch (error) {
+    console.error('Error fetching topic content:', error);
+    showToast.error('Failed to load topic content');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
-  const markAsComplete = async () => {
-    if (!userId) return;
-    
-    try {
-      const response = await fetch(
-        `http://localhost:8000/api/v1/topics/${topicId}/mark-complete?user_id=${userId}`,
-        { method: 'POST' }
-      );
-      
-      if (response.ok) {
-        setIsCompleted(true);
-        showToast.success('Topic marked as complete!');
-      }
-    } catch (error) {
-      console.error('Error marking complete:', error);
-    }
-  };
+const markAsComplete = async () => {
+  if (!userId) return;
+  
+  try {
+    // FIX: Use service method
+    await progressService.completeTopic(userId, topicId);
+    setIsCompleted(true);
+    showToast.success('Topic marked as complete! 🎉');
+  } catch (error) {
+    console.error('Error marking topic as complete:', error);
+    showToast.error('Failed to mark topic as complete');
+  }
+};
 
   const openResource = (url: string) => {
     window.open(url, '_blank', 'noopener,noreferrer');

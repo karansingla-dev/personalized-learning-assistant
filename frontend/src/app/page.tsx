@@ -101,10 +101,10 @@ export default function LandingPage() {
               key={i}
               className="absolute w-2 h-2 bg-white rounded-full animate-float"
               style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animationDelay: `${Math.random() * 10}s`,
-                animationDuration: `${10 + Math.random() * 20}s`
+                left: `${(i * 5) % 100}%`,
+                top: `${(i * 7) % 100}%`,
+                animationDelay: `${i * 0.5}s`,
+                animationDuration: `${15 + i}s`
               }}
             ></div>
           ))}

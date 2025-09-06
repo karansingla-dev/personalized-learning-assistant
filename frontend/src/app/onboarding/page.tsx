@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
 import { showToast } from '@/lib/toast';
+import { authService } from '@/lib/api';
 
 // Indian states list
 const INDIAN_STATES = [
@@ -137,55 +138,41 @@ export default function OnboardingPage() {
     }
   };
 
-  const handleComplete = async () => {
-    try {
-      setLoading(true);
-      
-      // Use username from Clerk user object or generate one
-      const username = user?.username || 
-                      user?.firstName?.toLowerCase() + user?.id?.slice(-4) || 
-                      'user' + Date.now().toString().slice(-6);
-      
-      const payload = {
-        clerk_id: user?.id || '',
-        email: user?.emailAddresses[0]?.emailAddress || '',
-        username: username,
-        first_name: user?.firstName || '',
-        last_name: user?.lastName || '',
-        phone_number: formData.phoneNumber.replace(/\s/g, ''), // Remove spaces
-        city: formData.city,
-        state: formData.state,
-        country: formData.country,
-        class_level: formData.classLevel,
-        board: formData.board,
-        stream: formData.stream || null,
-        target_exams: formData.targetExams
-      };
 
-      console.log('Sending payload:', payload);
-      
-      const response = await fetch('http://localhost:8000/api/v1/users/complete-onboarding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      
-      const data = await response.json();
-      console.log('Response:', data);
-      
-      if (response.ok) {
-        showToast.success('Welcome aboard! Let\'s start learning! 🚀');
-        router.push('/dashboard/subjects');
-      } else {
-        showToast.error(data.detail || 'Failed to complete setup');
-        setLoading(false);
-      }
-    } catch (error) {
-      console.error('Error:', error);
-      showToast.error('Something went wrong. Please try again.');
-      setLoading(false);
+const handleComplete = async () => {
+  try {
+    setLoading(true);
+    
+    const payload = {
+      clerk_id: userId,  // Use userId from useAuth
+      email: user?.emailAddresses[0]?.emailAddress || '',
+      username: user?.username || `user${Date.now()}`,
+      first_name: user?.firstName || '',
+      last_name: user?.lastName || '',
+      phone_number: formData.phoneNumber.replace(/\s/g, ''),
+      city: formData.city,
+      state: formData.state,
+      country: formData.country,
+      class_level: formData.classLevel,
+      board: formData.board,
+      stream: formData.stream || null,
+      target_exams: formData.targetExams
+    };
+
+    // FIX: Use service method
+    const response = await apiClient.post('/users/complete-onboarding', payload);
+    
+    if (response) {
+      showToast.success('Welcome aboard! Let\'s start learning! 🚀');
+      router.push('/dashboard/subjects');
     }
-  };
+  } catch (error) {
+    console.error('Error:', error);
+    showToast.error('Something went wrong. Please try again.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const totalSteps = getTotalSteps();
 

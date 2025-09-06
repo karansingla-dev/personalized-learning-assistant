@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     
     # YouTube API (Optional - for better video recommendations)
     YOUTUBE_API_KEY: Optional[str] = Field(None, env="YOUTUBE_API_KEY")
+    YOUTUBE_API_URL: Optional[str] = Field(None, env="YOUTUBE_API_URL")
     
     # Educational Content Settings
     MAX_VIDEOS_PER_TOPIC: int = Field(default=10, env="MAX_VIDEOS_PER_TOPIC")

@@ -1,14 +1,23 @@
+// ============================================
+// frontend/src/lib/api/index.ts
 /**
- * Main API export file
- * Re-exports all services for easy importing
+ * Update the main export file to include all services
  */
 
 export { apiClient, ApiError } from './client';
 export { authService } from './auth.service';
 export { syllabusService } from './syllabus.service';
 export { quizService } from './quiz.service';
+export { studyPlannerService } from './study-planner.service';
+export { notesService } from './notes.service';
+export { contentService } from './content.service';
+export { progressService } from './progress.service';
 
-// Export types
-export type { User, RegisterData, LoginData, OnboardingData } from './auth.service';
-export type { Syllabus, Topic } from './syllabus.service';
-export type { Quiz, Question, QuizSubmission } from './quiz.service';
+// Export all types
+export type * from './auth.service';
+export type * from './syllabus.service';
+export type * from './quiz.service';
+export type * from './study-planner.service';
+export type * from './notes.service';
+export type * from './content.service';
+export type * from './progress.service';
