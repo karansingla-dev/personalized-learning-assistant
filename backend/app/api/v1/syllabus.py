@@ -266,6 +266,141 @@ def count_pdf_pages(pdf_content: bytes) -> int:
 
 async def extract_topics_with_ai(text: str, syllabus_id: str) -> List[dict]:
     """Use Gemini AI to extract and analyze topics from syllabus text."""
+    
+    # Check if API key is configured
+    if not settings.GEMINI_API_KEY:
+        print("ERROR: GEMINI_API_KEY not configured!")
+        # Return sample topics if no API key
+        return [
+            {
+                "name": "Sample Topic 1",
+                "description": "This is a sample topic. Configure GEMINI_API_KEY to extract real topics.",
+                "importance": 8,
+                "prerequisites": [],
+                "estimated_hours": 5,
+                "syllabus_id": syllabus_id,
+                "created_at": datetime.utcnow()
+            },
+            {
+                "name": "Sample Topic 2",
+                "description": "Another sample topic. AI extraction requires Gemini API key.",
+                "importance": 6,
+                "prerequisites": ["Sample Topic 1"],
+                "estimated_hours": 3,
+                "syllabus_id": syllabus_id,
+                "created_at": datetime.utcnow()
+            }
+        ]
+    
+    try:
+        # Configure Gemini with error handling
+        try:
+            genai.configure(api_key=settings.GEMINI_API_KEY)
+            model = genai.GenerativeModel('gemini-pro')
+        except Exception as e:
+            print(f"ERROR configuring Gemini: {e}")
+            raise
+        
+        # Prepare prompt for Gemini
+        prompt = f"""
+        Analyze the following syllabus text and extract the main topics.
+        For each topic, provide:
+        1. Topic name
+        2. Brief description (2-3 sentences)
+        3. Importance level (1-10, where 10 is most important)
+        4. Prerequisites (if any)
+        5. Estimated learning time (in hours)
+        
+        Format the response as a JSON array with objects containing:
+        - name: string
+        - description: string
+        - importance: number
+        - prerequisites: array of strings
+        - estimated_hours: number
+        
+        Syllabus text:
+        {text[:4000]}  # Limit text to avoid token limits
+        
+        Return ONLY the JSON array, no additional text.
+        """
+        
+        print(f"Sending request to Gemini AI for syllabus {syllabus_id}...")
+        
+        # Generate response
+        response = model.generate_content(prompt)
+        
+        print(f"Received response from Gemini")
+        
+        # Parse JSON response
+        try:
+            # Clean the response text
+            json_text = response.text.strip()
+            
+            # Remove markdown code blocks if present
+            if json_text.startswith("```json"):
+                json_text = json_text[7:]
+            if json_text.startswith("```"):
+                json_text = json_text[3:]
+            if json_text.endswith("```"):
+                json_text = json_text[:-3]
+            
+            json_text = json_text.strip()
+            
+            print(f"Parsing JSON response...")
+            topics = json.loads(json_text)
+            
+            # Validate and clean topics
+            validated_topics = []
+            for i, topic in enumerate(topics[:20]):  # Limit to 20 topics
+                validated_topic = {
+                    "name": topic.get("name", f"Topic {i+1}"),
+                    "description": topic.get("description", "No description available"),
+                    "importance": min(10, max(1, topic.get("importance", 5))),
+                    "prerequisites": topic.get("prerequisites", []),
+                    "estimated_hours": topic.get("estimated_hours", 5),
+                    "syllabus_id": syllabus_id,
+                    "created_at": datetime.utcnow()
+                }
+                validated_topics.append(validated_topic)
+            
+            print(f"Successfully extracted {len(validated_topics)} topics")
+            return validated_topics
+            
+        except json.JSONDecodeError as e:
+            print(f"ERROR parsing AI response as JSON: {e}")
+            print(f"Raw response: {response.text[:500]}")
+            
+            # Return fallback topics on parse error
+            return [
+                {
+                    "name": "Course Content",
+                    "description": "Main course content extracted from syllabus",
+                    "importance": 8,
+                    "prerequisites": [],
+                    "estimated_hours": 10,
+                    "syllabus_id": syllabus_id,
+                    "created_at": datetime.utcnow()
+                }
+            ]
+            
+    except Exception as e:
+        print(f"ERROR with AI extraction: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return basic topic on any error
+        return [
+            {
+                "name": "Syllabus Content",
+                "description": "Content from uploaded syllabus (AI extraction failed)",
+                "importance": 5,
+                "prerequisites": [],
+                "estimated_hours": 5,
+                "syllabus_id": syllabus_id,
+                "created_at": datetime.utcnow()
+            }
+        ]
+    """Use Gemini AI to extract and analyze topics from syllabus text."""
     try:
         # Prepare prompt for Gemini
         prompt = f"""

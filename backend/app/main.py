@@ -16,8 +16,8 @@ import logging
 from motor.motor_asyncio import AsyncIOMotorClient
 
 from app.config import settings
-from app.api.v1 import syllabus, users, topics, quiz, notes, progress, study_plan
-
+from app.api.v1 import syllabus, users, topics, quiz, notes, progress, study_plan, curriculum
+from app.services.ai_service import ai_service
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -149,6 +149,12 @@ app.include_router(
     syllabus.router,
     prefix=f"{settings.API_V1_PREFIX}/syllabus",
     tags=["syllabus"]
+)
+
+app.include_router(
+    curriculum.router,
+    prefix=f"{settings.API_V1_PREFIX}/curriculum",
+    tags=["curriculum"]
 )
 
 app.include_router(
