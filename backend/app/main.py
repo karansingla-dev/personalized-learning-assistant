@@ -14,6 +14,8 @@ from bson import ObjectId
 
 from app.models.models import *
 from app.config import settings
+from app.api.v1 import curriculum, auth, users
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -168,6 +170,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(curriculum.router, prefix="/api/v1/curriculum", tags=["curriculum"])
+app.include_router(auth.router, prefix="/api/v1/auth", tags=["authentication"])
+app.include_router(users.router, prefix="/api/v1/users", tags=["users"])
+
+
 def get_db(request: Request):
     """Get database from request"""
     return request.app.state.db
@@ -179,7 +186,7 @@ async def complete_onboarding(
     data: OnboardingRequest,
     db = Depends(get_db)
 ):
-    """Complete user onboarding"""
+    """Complete user onboarding - FIXED VERSION"""
     try:
         # Check if user exists
         user = await db["users"].find_one({"clerk_id": data.clerk_id})
@@ -208,36 +215,50 @@ async def complete_onboarding(
             }
             
             result = await db["users"].insert_one(user_data)
-            user_data["_id"] = str(result.inserted_id)
+            # Don't include the MongoDB _id in the response
+            return {
+                "status": "success",
+                "user": {
+                    "clerk_id": data.clerk_id,
+                    "onboarding_completed": True
+                },
+                "redirect": "/dashboard"
+            }
         else:
             # Update existing user
-            update_data = {
-                "onboarding": {
-                    "completed": True,
-                    "class_level": data.class_level,
-                    "board": data.board,
-                    "target_exams": data.target_exams,
-                    "school_name": data.school_name,
-                    "city": data.city,
-                    "state": data.state
-                },
-                "study_schedule": {
-                    "school_start": data.school_start,
-                    "school_end": data.school_end,
-                    "daily_study_hours": data.daily_study_hours
-                },
-                "updated_at": datetime.utcnow()
-            }
-            
             await db["users"].update_one(
                 {"clerk_id": data.clerk_id},
-                {"$set": update_data}
+                {
+                    "$set": {
+                        "onboarding": {
+                            "completed": True,
+                            "class_level": data.class_level,
+                            "board": data.board,
+                            "target_exams": data.target_exams,
+                            "school_name": data.school_name,
+                            "city": data.city,
+                            "state": data.state
+                        },
+                        "study_schedule": {
+                            "school_start": data.school_start,
+                            "school_end": data.school_end,
+                            "daily_study_hours": data.daily_study_hours
+                        },
+                        "updated_at": datetime.utcnow()
+                    }
+                }
             )
             
-            user_data = {**user, **update_data}
-        
-        return {"status": "success", "redirect": "/dashboard", "user": user_data}
-        
+            # Return simple response without MongoDB objects
+            return {
+                "status": "success",
+                "user": {
+                    "clerk_id": data.clerk_id,
+                    "onboarding_completed": True
+                },
+                "redirect": "/dashboard"
+            }
+            
     except Exception as e:
         logger.error(f"Onboarding error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
