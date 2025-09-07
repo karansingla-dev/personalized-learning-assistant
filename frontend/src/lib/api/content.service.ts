@@ -22,6 +22,27 @@ export interface LearningContent {
   articles?: any[];
 }
 
+export interface Article {
+  id: string;
+  title: string;
+  source: string;
+  type: string;
+  icon: string;
+  url: string;
+  reading_time: string;
+  difficulty: string;
+  highlights: string[];
+  // Add these new fields
+  content?: string;
+  ai_summary?: string;
+  quality_score?: number;
+  images?: Array<{
+    url: string;
+    alt: string;
+    caption: string;
+  }>;
+}
+
 class ContentService {
   async generateContent(data: ContentRequest): Promise<LearningContent> {
     return apiClient.post<LearningContent>('/curriculum/generate-content', data);

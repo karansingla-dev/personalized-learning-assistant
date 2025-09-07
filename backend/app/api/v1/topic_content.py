@@ -11,6 +11,7 @@ import aiohttp
 import asyncio
 import google.generativeai as genai
 from app.config import settings
+from app.services.content_service import ContentService
 
 router = APIRouter(prefix="/api/v1/topics", tags=["content"])
 
@@ -30,96 +31,143 @@ YOUTUBE_API_URL = "https://www.googleapis.com/youtube/v3"
 async def get_topic_content(
     request: Request,
     topic_id: str,
-    user_id: str = Query(...),
-    force_refresh: bool = Query(False)
+    user_id: str = Query(..., description="User ID"),
+    force_refresh: bool = Query(False, description="Force refresh content")
 ):
-    """Get all learning content for a topic with real YouTube videos"""
+    """
+    Get all content for a topic including scraped blog articles
+    """
     db = get_db(request)
     
     try:
+        # Validate topic_id format
+        try:
+            obj_id = ObjectId(topic_id)
+        except:
+            raise HTTPException(status_code=400, detail="Invalid topic ID format")
+        
         # Get topic details
-        topic = await db["topics"].find_one({"_id": ObjectId(topic_id)})
+        topic = await db["topics"].find_one({"_id": obj_id})
         if not topic:
             raise HTTPException(status_code=404, detail="Topic not found")
         
-        topic_name = topic["name"]
-        subject_name = topic.get("subject_name", "")
+        # Get subject details for the topic
+        subject = None
+        if "subject_id" in topic:
+            try:
+                subject_id = ObjectId(topic["subject_id"]) if isinstance(topic["subject_id"], str) else topic["subject_id"]
+                subject = await db["subjects"].find_one({"_id": subject_id})
+            except:
+                print(f"Could not find subject for topic {topic_id}")
+        
+        # Determine subject name
+        subject_name = ""
+        if subject:
+            subject_name = subject.get("name", "")
+        elif "subject_name" in topic:
+            subject_name = topic["subject_name"]
+        else:
+            # Try to infer from topic
+            subject_name = "Mathematics"  # Default for now
+        
+        # Get class level
         class_level = topic.get("class_level", 10)
-        chapter_number = topic.get("chapter_number", 1)
-        description = topic.get("description", "")
         
-        print(f"📚 Fetching content for: {topic_name} ({subject_name}, Class {class_level})")
+        print(f"Fetching content for: {topic['name']} - {subject_name} - Class {class_level}")
         
-        # Check cache first (valid for 24 hours)
-        if not force_refresh:
-            cached_content = await db["topic_content"].find_one({
-                "topic_id": topic_id,
-                "created_at": {"$gte": datetime.utcnow() - timedelta(hours=24)}
-            })
-            
-            if cached_content:
-                print("✅ Returning cached content")
-                cached_content["_id"] = str(cached_content["_id"])
-                cached_content["from_cache"] = True
-                return cached_content
+        # Get content using enhanced service
+        content_service = ContentService(db)
         
-        # Generate fresh content
-        print("🔄 Generating fresh content...")
+        async with content_service:
+            content = await content_service.get_topic_content(
+                topic_id=topic_id,
+                topic_name=topic["name"],
+                subject_name=subject_name,
+                class_level=class_level,
+                force_refresh=force_refresh
+            )
         
-        # 1. Get REAL YouTube Videos
-        videos = await search_youtube_videos(topic_name, subject_name, class_level)
+        # Process the articles to ensure they have proper structure
+        if "articles" in content:
+            for i, article in enumerate(content["articles"]):
+                # Ensure each article has an ID
+                if not article.get("id"):
+                    article["id"] = f"article_{i}"
+                
+                # Mark articles with content as readable in-app
+                if article.get("content") and len(article["content"]) > 100:
+                    article["has_content"] = True
+                    article["type"] = "blog"
+                else:
+                    article["has_content"] = False
+                
+                # Add default values if missing
+                if not article.get("reading_time"):
+                    word_count = len(article.get("content", "").split()) if article.get("content") else 0
+                    article["reading_time"] = f"{max(1, word_count // 200)} min"
+                
+                if not article.get("icon"):
+                    article["icon"] = "📖" if article.get("has_content") else "🔗"
         
-        # 2. Get Educational Articles
-        articles = await get_educational_articles(topic_name, subject_name, class_level)
+        # Also ensure videos have proper structure
+        if "videos" in content:
+            for i, video in enumerate(content["videos"]):
+                if not video.get("id"):
+                    video["id"] = f"video_{i}"
+                if not video.get("content_type"):
+                    video["content_type"] = "video"
         
-        # 3. Generate ENHANCED AI Summary
-        ai_summary = await generate_enhanced_ai_summary(
-            topic_name, subject_name, class_level, chapter_number, description
-        )
-        
-        # 4. Get Practice Resources
-        practice_resources = await get_practice_resources(topic_name, subject_name, class_level)
-        
-        # 5. Mark topic as started for user
-        await db["progress"].update_one(
-            {"user_id": user_id, "topic_id": topic_id},
-            {
-                "$set": {
-                    "status": "in_progress",
-                    "last_accessed": datetime.utcnow()
-                },
-                "$inc": {"access_count": 1}
-            },
-            upsert=True
-        )
-        
-        # Prepare response
-        content_data = {
+        # Add topic metadata
+        response_data = {
             "topic_id": topic_id,
-            "topic_name": topic_name,
+            "topic_name": topic["name"],
+            "topic_description": topic.get("description", ""),
             "subject_name": subject_name,
             "class_level": class_level,
-            "chapter_number": chapter_number,
-            "videos": videos,
-            "articles": articles,
-            "ai_summary": ai_summary,
-            "practice_resources": practice_resources,
-            "created_at": datetime.utcnow(),
-            "from_cache": False
+            "chapter_number": topic.get("chapter_number", 1),
+            **content
         }
         
-        # Cache the content
-        await db["topic_content"].update_one(
-            {"topic_id": topic_id},
-            {"$set": content_data},
-            upsert=True
-        )
+        # Add user progress if available
+        progress = await db["progress"].find_one({
+            "user_id": user_id,
+            "topic_id": topic_id
+        })
         
-        return content_data
+        if progress:
+            response_data["is_completed"] = progress.get("completed", False)
+            response_data["completion_percentage"] = progress.get("progress", 0)
+        else:
+            response_data["is_completed"] = False
+            response_data["completion_percentage"] = 0
         
+        print(f"Returning {len(content.get('articles', []))} articles with content")
+        return response_data
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"❌ Error fetching content: {e}")
+        print(f"Error fetching content: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/{topic_id}/refresh-content")
+async def refresh_topic_content(
+    request: Request,
+    topic_id: str,
+    user_id: str = Query(..., description="User ID")
+):
+    """
+    Force refresh content for a topic (re-scrape blogs)
+    """
+    # This will force refresh the content
+    return await get_topic_content(
+        request=request,
+        topic_id=topic_id,
+        user_id=user_id,
+        force_refresh=True
+    )
 
 async def search_youtube_videos(topic: str, subject: str, class_level: int) -> List[Dict]:
     """Search YouTube for real educational videos"""

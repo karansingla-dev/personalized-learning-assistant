@@ -5,37 +5,43 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
 import { showToast } from '@/lib/toast';
-import { contentService, progressService } from '@/lib/api';
+import BlogReader from '@/components/BlogReader';
+import { BookOpen, Play, FileText, Brain, X, ExternalLink, Clock } from 'lucide-react';
 
-interface LearningResource {
+// Type definitions
+interface Video {
+  id: string;
+  video_id?: string;
   title: string;
-  description: string;
+  description?: string;
   url: string;
   thumbnail_url?: string;
+  channel?: string;
   author?: string;
-  source: string;
-  content_type: 'video' | 'article';
-  relevance_score?: number;
   duration_minutes?: number;
-  reading_time_minutes?: number;
+}
+
+interface Article {
+  id: string;
+  title: string;
+  source: string;
+  type: string;
+  icon: string;
+  url: string;
+  content?: string;
+  snippet?: string;
+  reading_time?: string;
+  has_content?: boolean;
 }
 
 interface TopicContent {
   topic_id: string;
   topic_name: string;
-  topic_description: string;
-  explanation: string;
-  simplified_explanation?: string;
-  key_concepts: string[];
-  learning_objectives: string[];
-  prerequisites?: string[];
-  next_topics?: string[];
-  videos: LearningResource[];
-  articles: LearningResource[];
-  best_video?: LearningResource;
-  best_article?: LearningResource;
-  is_completed?: boolean;
-  completion_percentage?: number;
+  topic_description?: string;
+  ai_explanation?: string;
+  ai_summary?: string;
+  videos: Video[];
+  articles: Article[];
 }
 
 export default function TopicDetailPage() {
@@ -45,67 +51,304 @@ export default function TopicDetailPage() {
   
   const topicId = params.topicId as string;
   
-  const [topicContent, setTopicContent] = useState<TopicContent | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'videos' | 'articles'>('overview');
-  const [isSimplified, setIsSimplified] = useState(false);
-  const [isCompleted, setIsCompleted] = useState(false);
+  const [content, setContent] = useState<TopicContent | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'summary' | 'videos' | 'articles'>('summary');
+  const [showBlogReader, setShowBlogReader] = useState(false);
+  const [selectedVideoIndex, setSelectedVideoIndex] = useState(0);
 
   useEffect(() => {
-    if (topicId) {
-      fetchTopicContent();
+    if (topicId && userId) {
+      fetchContent();
     }
-  }, [topicId]);
+  }, [topicId, userId]);
 
-const fetchTopicContent = async () => {
-  try {
-    setIsLoading(true);
-    // FIX: Use service method
-    const data = await contentService.getTopicContent(topicId);
-    setTopicContent(data);
-    setIsCompleted(data.is_completed || false);
-  } catch (error) {
-    console.error('Error fetching topic content:', error);
-    showToast.error('Failed to load topic content');
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-const markAsComplete = async () => {
-  if (!userId) return;
-  
-  try {
-    // FIX: Use service method
-    await progressService.completeTopic(userId, topicId);
-    setIsCompleted(true);
-    showToast.success('Topic marked as complete! 🎉');
-  } catch (error) {
-    console.error('Error marking topic as complete:', error);
-    showToast.error('Failed to mark topic as complete');
-  }
-};
-
-  const openResource = (url: string) => {
-    window.open(url, '_blank', 'noopener,noreferrer');
+  const fetchContent = async () => {
+    try {
+      setLoading(true);
+      
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/topics/${topicId}/content?user_id=${userId}`
+      );
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch content');
+      }
+      
+      const data = await response.json();
+      console.log('Content received:', data);
+      setContent(data);
+      
+    } catch (error) {
+      console.error('Error:', error);
+      showToast.error('Failed to load content');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (isLoading) {
+  // Render AI Summary with proper formatting
+  const renderAISummary = () => {
+    if (!content?.ai_explanation && !content?.ai_summary) {
+      return <p className="text-gray-500">No AI summary available</p>;
+    }
+    
+    const summary = content.ai_explanation || content.ai_summary || '';
+    
+    // Convert markdown-style headers to HTML
+    const formattedSummary = summary
+      .split('\n')
+      .map((line, index) => {
+        // Headers
+        if (line.startsWith('# ')) {
+          return <h1 key={index} className="text-2xl font-bold mt-6 mb-3">{line.substring(2)}</h1>;
+        }
+        if (line.startsWith('## ')) {
+          return <h2 key={index} className="text-xl font-semibold mt-4 mb-2 text-blue-600">{line.substring(3)}</h2>;
+        }
+        if (line.startsWith('### ')) {
+          return <h3 key={index} className="text-lg font-medium mt-3 mb-2">{line.substring(4)}</h3>;
+        }
+        
+        // Bold text
+        if (line.includes('**')) {
+          const parts = line.split('**');
+          return (
+            <p key={index} className="mb-2">
+              {parts.map((part, i) => 
+                i % 2 === 1 ? <strong key={i}>{part}</strong> : part
+              )}
+            </p>
+          );
+        }
+        
+        // List items
+        if (line.startsWith('- ') || line.startsWith('• ')) {
+          return (
+            <li key={index} className="ml-6 mb-1 list-disc">
+              {line.substring(2)}
+            </li>
+          );
+        }
+        
+        // Numbered items
+        if (/^\d+\.\s/.test(line)) {
+          return (
+            <li key={index} className="ml-6 mb-1 list-decimal">
+              {line.substring(line.indexOf('.') + 2)}
+            </li>
+          );
+        }
+        
+        // Regular paragraphs
+        if (line.trim()) {
+          return <p key={index} className="mb-2 text-gray-700">{line}</p>;
+        }
+        
+        return null;
+      });
+    
+    return <div className="prose prose-lg max-w-none">{formattedSummary}</div>;
+  };
+
+  // Render Videos with working players
+  const renderVideos = () => {
+    if (!content?.videos || content.videos.length === 0) {
+      return <p className="text-gray-500">No videos available</p>;
+    }
+    
+    const selectedVideo = content.videos[selectedVideoIndex];
+    
+    return (
+      <div className="space-y-6">
+        {/* Video Player */}
+        {selectedVideo?.video_id && selectedVideo.video_id !== `demo_${selectedVideoIndex + 1}` ? (
+          <div className="bg-black rounded-lg overflow-hidden aspect-video">
+            <iframe
+              src={`https://www.youtube.com/embed/${selectedVideo.video_id}`}
+              className="w-full h-full"
+              allowFullScreen
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            />
+          </div>
+        ) : (
+          <div className="bg-gray-100 rounded-lg aspect-video flex items-center justify-center">
+            <div className="text-center">
+              <Play className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-gray-600 mb-2">Video player placeholder</p>
+              <a
+                href={selectedVideo?.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 hover:underline flex items-center justify-center"
+              >
+                Watch on YouTube <ExternalLink className="w-4 h-4 ml-1" />
+              </a>
+            </div>
+          </div>
+        )}
+        
+        {/* Video Title and Info */}
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <h3 className="text-lg font-semibold mb-2">{selectedVideo?.title}</h3>
+          <div className="flex items-center text-sm text-gray-600 space-x-4">
+            {selectedVideo?.channel && <span>Channel: {selectedVideo.channel}</span>}
+            {selectedVideo?.duration_minutes && <span>{selectedVideo.duration_minutes} min</span>}
+          </div>
+        </div>
+        
+        {/* Video List */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {content.videos.map((video, index) => (
+            <div
+              key={video.id}
+              onClick={() => setSelectedVideoIndex(index)}
+              className={`bg-white rounded-lg p-4 cursor-pointer transition hover:shadow-lg ${
+                index === selectedVideoIndex ? 'ring-2 ring-blue-500' : ''
+              }`}
+            >
+              {/* Thumbnail */}
+              {video.thumbnail_url ? (
+                <img
+                  src={video.thumbnail_url}
+                  alt={video.title}
+                  className="w-full h-32 object-cover rounded mb-3"
+                  onError={(e) => {
+                    e.currentTarget.src = 'https://via.placeholder.com/480x360.png?text=Video';
+                  }}
+                />
+              ) : (
+                <div className="w-full h-32 bg-gray-200 rounded mb-3 flex items-center justify-center">
+                  <Play className="w-12 h-12 text-gray-400" />
+                </div>
+              )}
+              
+              {/* Title */}
+              <h4 className="font-medium text-sm line-clamp-2 mb-1">{video.title}</h4>
+              
+              {/* Channel */}
+              <p className="text-xs text-gray-600">{video.channel || video.author || 'Educational Video'}</p>
+              
+              {/* Duration */}
+              {video.duration_minutes && (
+                <p className="text-xs text-gray-500 mt-1">
+                  <Clock className="w-3 h-3 inline mr-1" />
+                  {video.duration_minutes} min
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  // Render Articles/Blogs
+  const renderArticles = () => {
+    if (!content?.articles || content.articles.length === 0) {
+      return <p className="text-gray-500">No articles available</p>;
+    }
+    
+    const blogsWithContent = content.articles.filter(a => a.has_content && a.content);
+    
+    return (
+      <div className="space-y-6">
+        {/* Header with Read All button */}
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-semibold">
+            Educational Articles & Blogs ({content.articles.length})
+          </h2>
+          
+          {blogsWithContent.length > 0 && (
+            <button
+              onClick={() => setShowBlogReader(true)}
+              className="px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:shadow-lg transition flex items-center"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Read All {blogsWithContent.length} Blogs
+            </button>
+          )}
+        </div>
+        
+        {/* Article Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {content.articles.map((article) => (
+            <div
+              key={article.id}
+              className="bg-white rounded-lg p-5 shadow-sm hover:shadow-lg transition cursor-pointer"
+              onClick={() => {
+                if (article.has_content && article.content) {
+                  setShowBlogReader(true);
+                } else if (article.url && article.url !== '#') {
+                  window.open(article.url, '_blank');
+                }
+              }}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1">
+                  <div className="flex items-center mb-2">
+                    <span className="text-2xl mr-2">{article.icon || '📄'}</span>
+                    <span className="text-xs text-gray-500 uppercase">{article.type}</span>
+                  </div>
+                  <h3 className="font-semibold text-gray-900 line-clamp-2">
+                    {article.title}
+                  </h3>
+                </div>
+              </div>
+              
+              {/* Snippet */}
+              {article.snippet && (
+                <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                  {article.snippet}
+                </p>
+              )}
+              
+              {/* Footer */}
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">
+                  {article.source} • {article.reading_time || '5 min'}
+                </span>
+                <span className="text-blue-600 flex items-center">
+                  {article.has_content ? (
+                    <>
+                      <BookOpen className="w-3 h-3 mr-1" />
+                      Read Here
+                    </>
+                  ) : (
+                    <>
+                      <ExternalLink className="w-3 h-3 mr-1" />
+                      Visit Site
+                    </>
+                  )}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading content...</p>
+        </div>
       </div>
     );
   }
 
-  if (!topicContent) {
+  if (!content) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Content not found</h2>
+          <p className="text-gray-600">No content available</p>
           <button
             onClick={() => router.back()}
-            className="text-blue-600 hover:underline"
+            className="mt-4 text-blue-600 hover:underline"
           >
             Go back
           </button>
@@ -118,298 +361,84 @@ const markAsComplete = async () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+        <div className="max-w-7xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <button
                 onClick={() => router.back()}
-                className="text-gray-600 hover:text-gray-900"
+                className="p-2 hover:bg-gray-100 rounded-lg"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                </svg>
+                ←
               </button>
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">{topicContent.topic_name}</h1>
-                <p className="text-sm text-gray-600 mt-1">{topicContent.topic_description}</p>
+                <h1 className="text-2xl font-bold">{content.topic_name}</h1>
+                {content.topic_description && (
+                  <p className="text-gray-600">{content.topic_description}</p>
+                )}
               </div>
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              {isCompleted ? (
-                <span className="px-4 py-2 bg-green-100 text-green-800 rounded-lg flex items-center">
-                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  Completed
-                </span>
-              ) : (
-                <button
-                  onClick={markAsComplete}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                >
-                  Mark as Complete
-                </button>
-              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Tab Navigation */}
-      <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="bg-white border-b sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4">
           <div className="flex space-x-8">
-            {(['overview', 'videos', 'articles'] as const).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm capitalize transition ${
-                  activeTab === tab
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                }`}
-              >
-                {tab === 'overview' && '📚'} {tab === 'videos' && '🎥'} {tab === 'articles' && '📄'} {tab}
-              </button>
-            ))}
+            <button
+              onClick={() => setActiveTab('summary')}
+              className={`py-4 px-1 border-b-2 font-medium transition ${
+                activeTab === 'summary'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Brain className="w-4 h-4 inline mr-2" />
+              AI Summary
+            </button>
+            <button
+              onClick={() => setActiveTab('videos')}
+              className={`py-4 px-1 border-b-2 font-medium transition ${
+                activeTab === 'videos'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Play className="w-4 h-4 inline mr-2" />
+              Videos ({content.videos?.length || 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('articles')}
+              className={`py-4 px-1 border-b-2 font-medium transition ${
+                activeTab === 'articles'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FileText className="w-4 h-4 inline mr-2" />
+              Articles ({content.articles?.length || 0})
+            </button>
           </div>
         </div>
       </div>
 
       {/* Content Area */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="space-y-8">
-            {/* Explanation Section */}
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-gray-900">Explanation</h2>
-                <button
-                  onClick={() => setIsSimplified(!isSimplified)}
-                  className={`px-4 py-2 rounded-lg transition ${
-                    isSimplified
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'bg-gray-100 text-gray-700'
-                  }`}
-                >
-                  {isSimplified ? '👶 Simple Mode' : '🎓 Standard Mode'}
-                </button>
-              </div>
-              
-              <div className="prose max-w-none">
-                <p className="text-gray-700 leading-relaxed">
-                  {isSimplified 
-                    ? topicContent.simplified_explanation || topicContent.explanation
-                    : topicContent.explanation
-                  }
-                </p>
-              </div>
-            </div>
-
-            {/* Key Concepts */}
-            {topicContent.key_concepts && topicContent.key_concepts.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">🔑 Key Concepts</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {topicContent.key_concepts.map((concept, index) => (
-                    <div key={index} className="flex items-start">
-                      <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium mr-3">
-                        {index + 1}
-                      </span>
-                      <span className="text-gray-700">{concept}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Learning Objectives */}
-            {topicContent.learning_objectives && topicContent.learning_objectives.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h2 className="text-xl font-bold text-gray-900 mb-4">🎯 Learning Objectives</h2>
-                <ul className="space-y-2">
-                  {topicContent.learning_objectives.map((objective, index) => (
-                    <li key={index} className="flex items-start">
-                      <svg className="w-5 h-5 text-green-500 mr-2 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                      <span className="text-gray-700">{objective}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* Best Resources */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Best Video */}
-              {topicContent.best_video && (
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4">🏆 Best Video</h3>
-                  <div className="space-y-3">
-                    {topicContent.best_video.thumbnail_url && (
-                      <img
-                        src={topicContent.best_video.thumbnail_url}
-                        alt={topicContent.best_video.title}
-                        className="w-full rounded-lg"
-                      />
-                    )}
-                    <h4 className="font-medium text-gray-900">{topicContent.best_video.title}</h4>
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {topicContent.best_video.description}
-                    </p>
-                    <button
-                      onClick={() => openResource(topicContent.best_video!.url)}
-                      className="w-full px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
-                    >
-                      Watch on YouTube →
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* Best Article */}
-              {topicContent.best_article && (
-                <div className="bg-white rounded-lg shadow-sm p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4">🏆 Best Article</h3>
-                  <div className="space-y-3">
-                    <div className="w-full h-32 bg-gradient-to-r from-blue-400 to-purple-400 rounded-lg flex items-center justify-center">
-                      <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z" />
-                      </svg>
-                    </div>
-                    <h4 className="font-medium text-gray-900">{topicContent.best_article.title}</h4>
-                    <p className="text-sm text-gray-600 line-clamp-2">
-                      {topicContent.best_article.description}
-                    </p>
-                    {topicContent.best_article.reading_time_minutes && (
-                      <p className="text-xs text-gray-500">
-                        📖 {topicContent.best_article.reading_time_minutes} min read
-                      </p>
-                    )}
-                    <button
-                      onClick={() => openResource(topicContent.best_article!.url)}
-                      className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
-                    >
-                      Read Article →
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Videos Tab */}
-        {activeTab === 'videos' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">
-                📹 Video Resources ({topicContent.videos.length})
-              </h2>
-              
-              {topicContent.videos.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {topicContent.videos.map((video, index) => (
-                    <div key={index} className="bg-gray-50 rounded-lg overflow-hidden hover:shadow-md transition">
-                      {video.thumbnail_url && (
-                        <img
-                          src={video.thumbnail_url}
-                          alt={video.title}
-                          className="w-full h-40 object-cover"
-                        />
-                      )}
-                      <div className="p-4">
-                        <h3 className="font-medium text-gray-900 line-clamp-2 mb-2">
-                          {video.title}
-                        </h3>
-                        <p className="text-sm text-gray-600 line-clamp-2 mb-3">
-                          {video.description}
-                        </p>
-                        <div className="flex items-center justify-between text-xs text-gray-500 mb-3">
-                          <span>{video.author}</span>
-                          {video.duration_minutes && (
-                            <span>{video.duration_minutes} min</span>
-                          )}
-                        </div>
-                        <button
-                          onClick={() => openResource(video.url)}
-                          className="w-full px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm"
-                        >
-                          Watch Video
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-8">
-                  No video resources available yet.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Articles Tab */}
-        {activeTab === 'articles' && (
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">
-                📚 Article Resources ({topicContent.articles.length})
-              </h2>
-              
-              {topicContent.articles.length > 0 ? (
-                <div className="space-y-4">
-                  {topicContent.articles.map((article, index) => (
-                    <div key={index} className="border rounded-lg p-4 hover:shadow-md transition">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-medium text-gray-900 mb-2">
-                            {article.title}
-                          </h3>
-                          <p className="text-sm text-gray-600 mb-3">
-                            {article.description}
-                          </p>
-                          <div className="flex items-center space-x-4 text-xs text-gray-500">
-                            <span className="flex items-center">
-                              <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                                <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                              </svg>
-                              {article.author || article.source}
-                            </span>
-                            {article.reading_time_minutes && (
-                              <span className="flex items-center">
-                                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                                </svg>
-                                {article.reading_time_minutes} min read
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => openResource(article.url)}
-                          className="ml-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm"
-                        >
-                          Read →
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-gray-500 text-center py-8">
-                  No article resources available yet.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
+      <div className="max-w-7xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-lg shadow-sm p-6">
+          {activeTab === 'summary' && renderAISummary()}
+          {activeTab === 'videos' && renderVideos()}
+          {activeTab === 'articles' && renderArticles()}
+        </div>
       </div>
+
+      {/* Blog Reader Modal */}
+      {showBlogReader && content.articles && (
+        <BlogReader
+          blogs={content.articles.filter(a => a.has_content && a.content)}
+          topicName={content.topic_name}
+          onClose={() => setShowBlogReader(false)}
+        />
+      )}
     </div>
   );
 }
