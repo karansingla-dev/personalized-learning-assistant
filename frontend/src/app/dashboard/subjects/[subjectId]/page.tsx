@@ -70,7 +70,7 @@ export default function SubjectTopicsPage() {
   };
 
   const handleTopicClick = (topicId: string) => {
-    router.push(`/topics/${topicId}`);
+    router.push(`/dashboard/topics/${topicId}`);
   };
 
   const getDifficultyColor = (difficulty: string) => {

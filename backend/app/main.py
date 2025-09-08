@@ -19,7 +19,7 @@ from bson import ObjectId
 
 from app.models.models import *
 from app.config import settings
-from app.api.v1 import curriculum, auth, users, syllabus, dashboard, topics, topic_content
+from app.api.v1 import auth, users, dashboard, topics, ai_summary
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -106,13 +106,11 @@ def get_db(request: Request):
     return request.app.state.db
 
 # Include routers
-app.include_router(curriculum.router)
 app.include_router(auth.router)
 app.include_router(users.router)
-app.include_router(syllabus.router)
 app.include_router(dashboard.router)
 app.include_router(topics.router)
-app.include_router(topic_content.router)
+app.include_router(ai_summary.router)
 
 # Health check endpoint
 @app.get("/health")

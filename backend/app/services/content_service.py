@@ -1,6 +1,8 @@
 # backend/app/services/content_service.py
+# UPDATE YOUR EXISTING FILE WITH THESE CHANGES
+
 """
-Complete working Content Service with Google Search, YouTube, and AI Summary
+Enhanced Content Service - Update your existing content_service.py
 """
 
 import asyncio
@@ -13,14 +15,18 @@ from urllib.parse import quote, urlparse, urljoin
 import google.generativeai as genai
 from bs4 import BeautifulSoup
 import hashlib
+import os
 
 from app.config import settings
 from app.models.models import ContentType, DifficultyLevel
 
+# Add these new configurations at the top
+YOUTUBE_API_KEY = os.getenv('YOUTUBE_API_KEY')
+SERPER_API_KEY = os.getenv('SERPER_API_KEY')
+
 # Configure Gemini - Try multiple models
 try:
     genai.configure(api_key=settings.GEMINI_API_KEY)
-    # Try different model names
     try:
         model = genai.GenerativeModel('gemini-1.5-flash')
     except:
@@ -42,7 +48,7 @@ class ContentService:
     async def __aenter__(self):
         self.session = aiohttp.ClientSession(
             connector=aiohttp.TCPConnector(ssl=False, limit=10),
-            timeout=aiohttp.ClientTimeout(total=15)
+            timeout=aiohttp.ClientTimeout(total=30)  # Increase timeout
         )
         return self
     
@@ -50,6 +56,7 @@ class ContentService:
         if self.session:
             await self.session.close()
     
+    # KEEP YOUR EXISTING get_topic_content METHOD BUT UPDATE IT:
     async def get_topic_content(
         self,
         topic_id: str,
@@ -63,9 +70,15 @@ class ContentService:
         # Check cache
         if not force_refresh:
             cached = await self._get_cached_content(topic_id)
-            if cached:
-                print(f"Returning cached content for {topic_name}")
-                return cached
+            if cached and cached.get('last_updated'):
+                # Check if cache is recent (within 7 days)
+                try:
+                    cache_time = datetime.fromisoformat(cached['last_updated'])
+                    if (datetime.utcnow() - cache_time).days < 7:
+                        print(f"Returning cached content for {topic_name}")
+                        return cached
+                except:
+                    pass
         
         print(f"Fetching fresh content for {topic_name} - Class {class_level}")
         
@@ -94,27 +107,63 @@ class ContentService:
         print(f"Content ready: {len(videos)} videos, {len(articles)} articles")
         return content_data
     
-    # ==================== AI SUMMARY ====================
+    # REPLACE YOUR generate_ai_summary METHOD WITH THIS:
     async def generate_ai_summary(self, topic_name: str, subject_name: str, class_level: int) -> str:
-        """Generate AI summary using Gemini or fallback"""
+        """Generate comprehensive AI summary with formulas and examples"""
         
         print(f"Generating AI summary for {topic_name}")
         
         if model:
             try:
+                # Adjust complexity based on class level
+                if class_level <= 8:
+                    complexity = "simple explanations with fun examples from daily life"
+                elif class_level <= 10:
+                    complexity = "clear explanations with practical applications and basic formulas"
+                else:
+                    complexity = "detailed explanations with formulas, derivations, and JEE/NEET level concepts"
+                
                 prompt = f"""
-                Explain "{topic_name}" in {subject_name} for a Class {class_level} student.
+                Create a comprehensive study guide for "{topic_name}" in {subject_name} for a Class {class_level} student.
                 
-                Include:
-                1. What is {topic_name}? (Simple introduction)
-                2. Why is it important? (Real-world applications)
-                3. Key concepts (Main points to remember)
-                4. Examples (2-3 practical examples)
-                5. Common mistakes to avoid
-                6. Quick tips for exams
+                Use {complexity}.
                 
-                Make it engaging and easy to understand for a Class {class_level} student.
-                Use simple language for younger classes and more technical terms for higher classes.
+                Structure your response with these sections:
+                
+                # {topic_name}
+                
+                ## 📚 What is {topic_name}?
+                (Provide a clear, engaging introduction suitable for Class {class_level})
+                
+                ## 🎯 Why is it Important?
+                - Real-world applications
+                - How it connects to other topics
+                - Career relevance
+                
+                ## 🔑 Key Concepts
+                (List and explain 3-5 main concepts with examples)
+                
+                ## 📐 Important Formulas
+                (If applicable, list key formulas with explanations)
+                
+                ## 📝 Solved Examples
+                (Provide 2-3 worked examples appropriate for Class {class_level})
+                
+                ## ⚠️ Common Mistakes to Avoid
+                (List 3-4 common errors students make)
+                
+                ## 💡 Memory Tips & Tricks
+                (Mnemonics, shortcuts, or visual aids to remember concepts)
+                
+                ## 📊 Quick Revision Points
+                (Bullet points for last-minute revision)
+                
+                ## 🎓 Exam Tips
+                - Important questions that frequently appear
+                - How to approach problems
+                - Time management suggestions
+                
+                Make it engaging and appropriate for the student's level. Use emojis to make sections visually distinct.
                 """
                 
                 response = model.generate_content(prompt)
@@ -124,393 +173,470 @@ class ContentService:
         
         return self._get_default_summary(topic_name, subject_name, class_level)
     
-    def _get_default_summary(self, topic_name: str, subject_name: str, class_level: int) -> str:
-        """Default summary when AI fails"""
-        
-        complexity = "simple" if class_level <= 8 else "detailed" if class_level <= 10 else "advanced"
-        
-        return f"""
-# {topic_name} - Complete Guide
-
-## 📚 Introduction
-{topic_name} is a fundamental topic in {subject_name} for Class {class_level} students. This topic is essential for understanding advanced concepts and scoring well in exams.
-
-## 🎯 Why is it Important?
-- Forms the foundation for higher-level concepts
-- Frequently asked in board exams and competitive tests
-- Has practical applications in everyday life
-- Helps develop problem-solving skills
-
-## 🔑 Key Concepts
-
-### 1. Basic Definition
-{topic_name} refers to the study of fundamental principles and their applications in {subject_name}.
-
-### 2. Core Principles
-- Understanding the basic concepts and theories
-- Learning to apply formulas correctly
-- Solving problems step by step
-- Connecting theory with practical examples
-
-### 3. Important Formulas
-Remember to understand the derivation of formulas rather than just memorizing them. This helps in better retention and application.
-
-## 💡 Examples
-
-### Example 1: Basic Problem
-Start with simple problems to build your foundation. Practice identifying what is given and what needs to be found.
-
-### Example 2: Intermediate Problem
-Once comfortable with basics, move to problems that combine multiple concepts.
-
-### Example 3: Advanced Application
-For higher scores, practice complex problems that test your understanding of interconnected concepts.
-
-## ⚠️ Common Mistakes to Avoid
-1. **Not reading the question carefully** - Always identify what is being asked
-2. **Calculation errors** - Double-check your arithmetic
-3. **Wrong formula application** - Understand when to use which formula
-4. **Missing units** - Always include appropriate units in your answer
-5. **Skipping steps** - Show all steps for full marks
-
-## 🎓 Exam Tips
-- Practice NCERT questions thoroughly
-- Solve previous year papers
-- Make a formula sheet for quick revision
-- Time yourself while practicing
-- Focus on understanding concepts, not rote learning
-
-## 📝 Quick Revision Points
-- Master the basic definitions
-- Practice numerical problems daily
-- Review your mistakes regularly
-- Create mind maps for better retention
-- Discuss difficult concepts with teachers or peers
-
-## 🏆 Success Strategy
-Consistency is key! Practice regularly, understand concepts deeply, and stay confident during exams.
-"""
-    
-    # ==================== YOUTUBE VIDEOS ====================
+    # REPLACE YOUR fetch_youtube_videos METHOD WITH THIS:
     async def fetch_youtube_videos(self, topic_name: str, subject_name: str, class_level: int) -> List[Dict]:
-        """Fetch YouTube videos - simplified approach"""
+        """Fetch real YouTube videos using YouTube Data API v3"""
         
         print(f"Fetching YouTube videos for {topic_name}")
         
-        # Educational channels to search
+        if YOUTUBE_API_KEY:
+            try:
+                # Use YouTube Data API
+                search_url = "https://www.googleapis.com/youtube/v3/search"
+                
+                # Educational channels to prioritize
+                edu_channels = [
+                    "Khan Academy", "Physics Wallah", "BYJU'S", 
+                    "Vedantu", "Unacademy", "NCERT Official"
+                ]
+                
+                query = f"{topic_name} {subject_name} class {class_level} CBSE NCERT"
+                
+                params = {
+                    'part': 'snippet',
+                    'q': query,
+                    'key': YOUTUBE_API_KEY,
+                    'maxResults': 15,
+                    'type': 'video',
+                    'videoDuration': 'medium',
+                    'relevanceLanguage': 'en',
+                    'safeSearch': 'strict'
+                }
+                
+                async with self.session.get(search_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        
+                        videos = []
+                        for item in data.get('items', []):
+                            snippet = item['snippet']
+                            video_id = item['id']['videoId']
+                            
+                            # Get video details for duration
+                            details = await self._get_video_details(video_id)
+                            
+                            videos.append({
+                                'id': f'video_{len(videos) + 1}',
+                                'video_id': video_id,
+                                'title': snippet['title'],
+                                'description': snippet.get('description', '')[:200],
+                                'url': f"https://www.youtube.com/watch?v={video_id}",
+                                'thumbnail_url': snippet['thumbnails']['high']['url'],
+                                'channel': snippet['channelTitle'],
+                                'author': snippet['channelTitle'],
+                                'duration_minutes': details.get('duration', 10),
+                                'content_type': 'video',
+                                'source': 'YouTube'
+                            })
+                        
+                        print(f"Found {len(videos)} YouTube videos")
+                        return videos[:10]
+                    
+            except Exception as e:
+                print(f"YouTube API error: {e}")
+        
+        # Fallback to your existing implementation
+        return self._get_fallback_videos(topic_name, subject_name, class_level)
+    
+    async def _get_video_details(self, video_id: str) -> Dict:
+        """Get video duration and stats"""
+        if not YOUTUBE_API_KEY:
+            return {'duration': 10}
+        
+        try:
+            url = "https://www.googleapis.com/youtube/v3/videos"
+            params = {
+                'part': 'contentDetails,statistics',
+                'id': video_id,
+                'key': YOUTUBE_API_KEY
+            }
+            
+            async with self.session.get(url, params=params) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    if data.get('items'):
+                        item = data['items'][0]
+                        
+                        # Parse duration (PT15M33S -> 15)
+                        duration_str = item['contentDetails']['duration']
+                        import re
+                        match = re.match(r'PT(\d+H)?(\d+M)?(\d+S)?', duration_str)
+                        if match:
+                            hours = int(match.group(1)[:-1]) if match.group(1) else 0
+                            minutes = int(match.group(2)[:-1]) if match.group(2) else 0
+                            total_minutes = hours * 60 + minutes
+                            return {'duration': total_minutes or 10}
+        except:
+            pass
+        
+        return {'duration': 10}
+    
+    def _get_fallback_videos(self, topic_name: str, subject_name: str, class_level: int) -> List[Dict]:
+        """Fallback videos when API is not available"""
         channels = [
             "Khan Academy", "BYJU'S", "Vedantu", "Physics Wallah",
             "Unacademy", "NCERT Official", "Manocha Academy"
         ]
         
         videos = []
-        video_id_counter = 1
-        
-        # Generate search URLs for each channel
-        for channel in channels:
-            search_query = f"{topic_name} {subject_name} class {class_level} {channel}"
-            search_url = f"https://www.youtube.com/results?search_query={quote(search_query)}"
-            
-            # Create a video entry with search link
+        for i, channel in enumerate(channels[:6]):
             videos.append({
-                'id': f'video_{video_id_counter}',
-                'video_id': f'demo_{video_id_counter}',
-                'title': f'{topic_name} - {channel} Tutorial',
-                'description': f'Learn {topic_name} with {channel} for Class {class_level}',
-                'url': search_url,
+                'id': f'video_{i + 1}',
+                'video_id': f'demo_{i + 1}',
+                'title': f'{topic_name} - {channel} Class {class_level}',
+                'description': f'Learn {topic_name} with {channel}',
+                'url': f'https://www.youtube.com/results?search_query={quote(topic_name + " " + channel)}',
                 'thumbnail_url': f'https://via.placeholder.com/480x360.png?text={channel}',
                 'channel': channel,
-                'source': 'YouTube',
+                'author': channel,
+                'duration_minutes': 15,
                 'content_type': 'video',
-                'duration_minutes': 10,
-                'author': channel
+                'source': 'YouTube'
             })
-            video_id_counter += 1
         
-        # Add some direct video IDs if you know them
-        known_videos = [
-            {'id': 'dQw4w9WgXcQ', 'title': f'{topic_name} Explained'},
-            {'id': 'jNQXAC9IVRw', 'title': f'{topic_name} Tutorial'},
+        return videos
+    
+    # REPLACE YOUR search_and_scrape_blogs METHOD WITH THIS:
+    async def search_and_scrape_blogs(self, topic_name: str, subject_name: str, class_level: int) -> List[Dict]:
+        """Enhanced blog scraping with actual content extraction"""
+        
+        print(f"Searching and scraping blogs for {topic_name}")
+        
+        articles = []
+        
+        # Educational sites to try
+        edu_urls = [
+            f"https://byjus.com/ncert-solutions-class-{class_level}/{subject_name.lower()}/",
+            f"https://www.toppr.com/guides/{subject_name.lower()}/",
+            f"https://www.vedantu.com/ncert-solutions/ncert-solutions-class-{class_level}-{subject_name.lower()}",
+            f"https://www.learncbse.in/ncert-solutions-class-{class_level}-{subject_name.lower()}/",
+            f"https://www.khanacademy.org/search?page_search_query={quote(topic_name)}"
         ]
         
-        for kv in known_videos:
-            videos.append({
-                'id': f'video_{video_id_counter}',
-                'video_id': kv['id'],
-                'title': kv['title'],
-                'url': f"https://www.youtube.com/watch?v={kv['id']}",
-                'thumbnail_url': f"https://img.youtube.com/vi/{kv['id']}/mqdefault.jpg",
-                'channel': 'Educational Channel',
-                'source': 'YouTube',
-                'content_type': 'video',
-                'duration_minutes': 15,
-                'author': 'Education'
-            })
-            video_id_counter += 1
+        # Try Serper API first if available
+        if SERPER_API_KEY:
+            articles = await self._search_with_serper(topic_name, subject_name, class_level)
         
-        print(f"Created {len(videos)} video entries")
-        return videos[:10]
+        # Try direct scraping as fallback
+        if len(articles) < 5:
+            for url in edu_urls[:3]:  # Try first 3 URLs
+                article = await self._scrape_single_article(url, topic_name)
+                if article:
+                    articles.append(article)
+        
+        # If still not enough, use Google search
+        if len(articles) < 5:
+            search_results = await self._google_search(f"{topic_name} {subject_name} class {class_level} tutorial")
+            for result in search_results[:5]:
+                article = await self._scrape_single_article(
+                    result['url'], 
+                    topic_name,
+                    title=result.get('title'),
+                    snippet=result.get('snippet')
+                )
+                if article:
+                    articles.append(article)
+        
+        # Ensure proper structure
+        for i, article in enumerate(articles):
+            article['id'] = f'article_{i + 1}'
+            if not article.get('reading_time'):
+                words = len(article.get('content', '').split())
+                article['reading_time'] = f"{max(1, words // 200)} min read"
+            article['has_content'] = bool(article.get('content') and len(article['content']) > 500)
+        
+        print(f"Scraped {len(articles)} articles with content")
+        return articles[:10]
     
-    # ==================== BLOG SCRAPING WITH GOOGLE ====================
-    async def search_and_scrape_blogs(self, topic_name: str, subject_name: str, class_level: int) -> List[Dict]:
-        """Search Google and scrape blogs"""
+    async def _search_with_serper(self, topic_name: str, subject_name: str, class_level: int) -> List[Dict]:
+        """Use Serper API for search"""
+        if not SERPER_API_KEY:
+            return []
         
-        print(f"Searching Google for blogs about {topic_name}")
-        
-        # Build search query
-        query = f"{topic_name} {subject_name} class {class_level} tutorial explanation blog"
-        
-        # Get Google search results
-        search_results = await self._google_search(query)
-        
-        # Scrape each result
-        blogs = []
-        for i, result in enumerate(search_results[:20]):  # Try 20 URLs
-            print(f"  Trying {i+1}/20: {result['domain']}")
+        try:
+            url = "https://google.serper.dev/search"
+            headers = {
+                'X-API-KEY': SERPER_API_KEY,
+                'Content-Type': 'application/json'
+            }
             
-            blog = await self._scrape_blog(
-                url=result['url'],
-                title=result['title'],
-                snippet=result['snippet'],
-                domain=result['domain'],
-                topic_name=topic_name,
-                class_level=class_level
-            )
+            payload = {
+                'q': f"{topic_name} {subject_name} class {class_level} NCERT tutorial",
+                'num': 10
+            }
             
-            if blog:
-                blogs.append(blog)
-                print(f"    ✓ Success")
-            
-            if len(blogs) >= 10:  # Stop when we have 10 good blogs
-                break
+            async with self.session.post(url, json=payload, headers=headers) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    articles = []
+                    
+                    for result in data.get('organic', [])[:10]:
+                        article = await self._scrape_single_article(
+                            result['link'],
+                            topic_name,
+                            title=result.get('title'),
+                            snippet=result.get('snippet')
+                        )
+                        if article:
+                            articles.append(article)
+                    
+                    return articles
+        except Exception as e:
+            print(f"Serper API error: {e}")
         
-        # Add fallback if needed
-        if len(blogs) < 5:
-            blogs.extend(self._get_fallback_blogs(topic_name, subject_name, class_level, 5 - len(blogs)))
-        
-        print(f"Total blogs: {len(blogs)}")
-        return blogs[:10]
+        return []
     
     async def _google_search(self, query: str) -> List[Dict]:
-        """Search Google using web scraping"""
-        
+        """Simple Google search scraping"""
         results = []
         
-        # Try multiple Google domains
-        google_domains = ['google.com', 'google.co.in']
-        
-        for domain in google_domains:
-            try:
-                url = f"https://www.{domain}/search?q={quote(query)}&num=20"
-                
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Accept-Encoding': 'gzip, deflate',
-                    'Connection': 'keep-alive',
-                }
-                
-                async with self.session.get(url, headers=headers) as response:
-                    if response.status == 200:
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
-                        
-                        # Find all search result divs
-                        for g in soup.find_all('div', class_='g'):
-                            # Extract URL
-                            link = g.find('a', href=True)
-                            if not link:
-                                continue
-                            
+        try:
+            url = f"https://www.google.com/search?q={quote(query)}&num=10"
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            async with self.session.get(url, headers=headers) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Find search results
+                    for g in soup.find_all('div', class_='g')[:10]:
+                        link = g.find('a', href=True)
+                        if link:
                             url = link['href']
-                            if not url.startswith('http'):
-                                continue
-                            
-                            # Skip unwanted domains
-                            parsed = urlparse(url)
-                            domain = parsed.netloc.replace('www.', '')
-                            
-                            if any(skip in domain for skip in ['google', 'youtube', 'facebook', 'instagram', 'twitter']):
-                                continue
-                            
-                            # Extract title
-                            h3 = g.find('h3')
-                            title = h3.get_text() if h3 else 'No title'
-                            
-                            # Extract snippet
-                            snippet_div = g.find('div', class_='VwiC3b')
-                            if not snippet_div:
-                                snippet_div = g.find('span', class_='aCOpRe')
-                            snippet = snippet_div.get_text() if snippet_div else ''
-                            
-                            results.append({
-                                'url': url,
-                                'title': title,
-                                'snippet': snippet,
-                                'domain': domain
-                            })
-                        
-                        if results:
-                            print(f"Found {len(results)} results from {domain}")
-                            break
-                            
-            except Exception as e:
-                print(f"Error searching {domain}: {e}")
-                continue
-        
-        # If Google fails, use direct educational URLs
-        if not results:
-            results = self._get_direct_urls(query)
+                            if url.startswith('http'):
+                                title = g.find('h3')
+                                snippet = g.find('span', class_='aCOpRe')
+                                
+                                results.append({
+                                    'url': url,
+                                    'title': title.text if title else '',
+                                    'snippet': snippet.text if snippet else ''
+                                })
+        except Exception as e:
+            print(f"Google search error: {e}")
         
         return results
     
-    def _get_direct_urls(self, query: str) -> List[Dict]:
-        """Get direct educational URLs as fallback"""
-        
-        topic = query.split()[0].lower().replace(' ', '-')
-        
-        return [
-            {'url': f'https://www.geeksforgeeks.org/{topic}/', 'title': f'{topic} - GeeksforGeeks', 'domain': 'geeksforgeeks.org', 'snippet': 'Learn from GeeksforGeeks'},
-            {'url': f'https://byjus.com/maths/{topic}/', 'title': f'{topic} - BYJU\'S', 'domain': 'byjus.com', 'snippet': 'BYJU\'S learning app'},
-            {'url': f'https://www.vedantu.com/maths/{topic}', 'title': f'{topic} - Vedantu', 'domain': 'vedantu.com', 'snippet': 'Vedantu online learning'},
-            {'url': f'https://www.toppr.com/guides/{topic}/', 'title': f'{topic} - Toppr', 'domain': 'toppr.com', 'snippet': 'Toppr guides'},
-            {'url': f'https://www.cuemath.com/{topic}/', 'title': f'{topic} - Cuemath', 'domain': 'cuemath.com', 'snippet': 'Cuemath learning'},
-        ]
-    
-    async def _scrape_blog(self, url: str, title: str, snippet: str, domain: str, topic_name: str, class_level: int) -> Optional[Dict]:
-        """Scrape a single blog"""
+    async def _scrape_single_article(self, url: str, topic_name: str, title: str = None, snippet: str = None) -> Optional[Dict]:
+        """Scrape content from a single URL"""
         
         try:
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             }
             
-            async with self.session.get(url, headers=headers, ssl=False) as response:
-                if response.status != 200:
-                    return None
-                
-                html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                
-                # Remove scripts and styles
-                for script in soup(['script', 'style', 'nav', 'header', 'footer']):
-                    script.decompose()
-                
-                # Try to find main content
-                content = ""
-                for selector in ['article', 'main', '.content', '#content', '.post', 'body']:
-                    elem = soup.select_one(selector)
-                    if elem:
-                        text = elem.get_text(separator='\n', strip=True)
-                        if len(text) > len(content):
-                            content = text
-                
-                # Clean content
-                content = re.sub(r'\s+', ' ', content)
-                content = re.sub(r'\n{3,}', '\n\n', content)
-                
-                # Must have minimum content
-                if len(content) < 300:
-                    return None
-                
-                return {
-                    'id': f'blog_{hashlib.md5(url.encode()).hexdigest()[:8]}',
-                    'title': title[:200],
-                    'source': domain,
-                    'type': 'blog',
-                    'icon': '📖',
-                    'url': url,
-                    'content': content[:5000],  # Limit size
-                    'snippet': snippet,
-                    'reading_time': f"{max(1, len(content.split()) // 200)} min",
-                    'difficulty': 'medium' if class_level <= 10 else 'hard',
-                    'highlights': [snippet[:100]] if snippet else [],
-                    'has_content': True
-                }
-                
+            async with self.session.get(url, headers=headers, timeout=10) as response:
+                if response.status == 200:
+                    html = await response.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    
+                    # Remove unwanted elements
+                    for element in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+                        element.decompose()
+                    
+                    # Extract title
+                    if not title:
+                        title_elem = soup.find('h1') or soup.find('title')
+                        title = title_elem.get_text(strip=True) if title_elem else topic_name
+                    
+                    # Extract content
+                    content = ""
+                    
+                    # Try different content selectors
+                    content_selectors = [
+                        'article', 'main', '.content', '.post-content',
+                        '.entry-content', '[role="main"]', '#content'
+                    ]
+                    
+                    for selector in content_selectors:
+                        content_elem = soup.select_one(selector)
+                        if content_elem:
+                            # Get text with proper spacing
+                            paragraphs = content_elem.find_all(['p', 'h2', 'h3', 'li'])
+                            content_parts = []
+                            for p in paragraphs[:30]:  # Limit to first 30 elements
+                                text = p.get_text(strip=True)
+                                if len(text) > 20:  # Skip very short text
+                                    content_parts.append(text)
+                            
+                            content = '\n\n'.join(content_parts)
+                            break
+                    
+                    # Fallback to body text
+                    if not content:
+                        body = soup.find('body')
+                        if body:
+                            paragraphs = body.find_all('p')[:20]
+                            content = '\n\n'.join([p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 50])
+                    
+                    if content and len(content) > 200:
+                        # Truncate if too long
+                        if len(content) > 3000:
+                            content = content[:3000] + "..."
+                        
+                        # Extract domain
+                        domain = urlparse(url).netloc.replace('www.', '')
+                        
+                        return {
+                            'title': title[:100],
+                            'url': url,
+                            'source': domain,
+                            'content': content,
+                            'snippet': snippet or content[:200],
+                            'type': 'article',
+                            'icon': '📚',
+                            'scraped_at': datetime.utcnow().isoformat()
+                        }
+                        
         except Exception as e:
+            print(f"Error scraping {url}: {e}")
+        
+        return None
+    
+    # UPDATE YOUR _get_default_summary METHOD:
+    def _get_default_summary(self, topic_name: str, subject_name: str, class_level: int) -> str:
+        """Enhanced fallback summary"""
+        
+        complexity = "simple" if class_level <= 8 else "detailed" if class_level <= 10 else "advanced"
+        
+        return f"""
+# {topic_name} - Complete Study Guide
+
+## 📚 What is {topic_name}?
+
+{topic_name} is an important concept in {subject_name} that students in Class {class_level} need to master. This topic forms the foundation for more advanced concepts you'll learn in higher classes.
+
+## 🎯 Why is it Important?
+
+**Real-World Applications:**
+- Used in everyday problem-solving and practical situations
+- Essential for understanding advanced {subject_name} concepts
+- Frequently appears in board exams and competitive tests (JEE/NEET)
+- Has applications in various career fields
+
+## 🔑 Key Concepts
+
+### 1. Fundamental Principles
+Understanding the basic principles of {topic_name} is crucial. Start by grasping the core ideas before moving to complex problems.
+
+### 2. Problem-Solving Approach
+- **Step 1:** Read the problem carefully and identify what is given
+- **Step 2:** Determine what needs to be found
+- **Step 3:** Apply the relevant concepts and formulas
+- **Step 4:** Solve systematically
+- **Step 5:** Check your answer for reasonableness
+
+### 3. Common Patterns
+Look for patterns in problems related to {topic_name}. Most questions follow similar approaches that you can master with practice.
+
+## 📐 Important Formulas
+
+*Note: Specific formulas for {topic_name} will be covered in your class. Key formulas include:*
+- Basic formula applications
+- Advanced problem-solving formulas
+- Quick calculation shortcuts
+
+## 📝 Practice Examples
+
+### Example 1: Basic Level
+Start with simple, direct applications of the concept.
+
+### Example 2: Intermediate Level
+Move to problems requiring multiple steps.
+
+### Example 3: Advanced Level
+Practice complex, application-based questions.
+
+## ⚠️ Common Mistakes to Avoid
+
+1. **Rushing through problems** - Take time to understand each step
+2. **Ignoring units** - Always write proper units in your answers
+3. **Not checking answers** - Verify your solutions make sense
+4. **Memorizing without understanding** - Focus on understanding concepts
+
+## 💡 Memory Tips & Tricks
+
+- Create mnemonics for important formulas
+- Use visual diagrams and flowcharts
+- Relate concepts to real-life examples
+- Practice regularly with timed tests
+- Make summary notes for quick revision
+
+## 📊 Quick Revision Points
+
+✓ Master the basic definitions and concepts
+✓ Know all important formulas and their applications
+✓ Practice different types of problems
+✓ Review common mistakes and how to avoid them
+✓ Solve previous year question papers
+
+## 🎓 Exam Tips
+
+**Before the Exam:**
+- Complete all NCERT exercises thoroughly
+- Solve at least 5 sample papers
+- Review all important formulas
+
+**During the Exam:**
+- Read questions carefully before answering
+- Manage time effectively (spend appropriate time per question)
+- Attempt easy questions first to build confidence
+- Review your answers if time permits
+
+---
+*Remember: Success in {subject_name} comes from understanding concepts deeply and regular practice. Stay confident and keep practicing!*
+"""
+    
+    # Keep your existing _get_cached_content method
+    async def _get_cached_content(self, topic_id: str) -> Optional[Dict]:
+        """Get cached content from database"""
+        try:
+            cache = await self.db["topic_content"].find_one({"topic_id": topic_id})
+            return cache
+        except:
             return None
     
-    def _get_fallback_blogs(self, topic_name: str, subject_name: str, class_level: int, count: int) -> List[Dict]:
-        """Generate fallback blog content"""
+    # Keep your existing _save_to_cache method
+    async def _save_to_cache(self, topic_id: str, content: Dict):
+        """Save content to cache"""
+        try:
+            content['topic_id'] = topic_id
+            await self.db["topic_content"].replace_one(
+                {"topic_id": topic_id},
+                content,
+                upsert=True
+            )
+        except Exception as e:
+            print(f"Error saving to cache: {e}")
+    
+    # ADD THIS NEW METHOD FOR FALLBACK BLOGS
+    def _get_fallback_blogs(self, topic_name: str, subject_name: str, class_level: int, count: int = 5) -> List[Dict]:
+        """Generate fallback blog entries"""
+        
+        sources = [
+            {"name": "NCERT Solutions", "domain": "ncert.nic.in", "icon": "📖"},
+            {"name": "BYJU'S Learning", "domain": "byjus.com", "icon": "🎓"},
+            {"name": "Khan Academy", "domain": "khanacademy.org", "icon": "🏫"},
+            {"name": "Vedantu", "domain": "vedantu.com", "icon": "📚"},
+            {"name": "TopperLearning", "domain": "topperlearning.com", "icon": "🎯"}
+        ]
         
         blogs = []
-        
-        for i in range(count):
-            content = f"""
-Understanding {topic_name} - Part {i+1}
-
-{topic_name} is an essential topic in {subject_name} for Class {class_level} students.
-
-Introduction:
-This comprehensive guide will help you understand all aspects of {topic_name}. Whether you're preparing for board exams or competitive tests, this material covers everything you need.
-
-Key Concepts:
-1. Basic Understanding: Start with the fundamental concepts
-2. Advanced Topics: Build upon the basics with complex problems
-3. Practice Problems: Apply your knowledge with exercises
-4. Real Applications: See how this applies in real life
-
-Important Points:
-- Always understand the concept before memorizing formulas
-- Practice regularly to improve problem-solving speed
-- Review mistakes to avoid repeating them
-- Connect this topic with other related concepts
-
-Study Tips:
-Regular practice is the key to mastering {topic_name}. Dedicate at least 30 minutes daily to this topic. Start with NCERT examples, then move to reference books.
-
-Exam Preparation:
-Focus on previous year questions and common problem types. Time management is crucial during exams.
-
-Conclusion:
-With consistent effort and the right approach, you can master {topic_name} easily.
-"""
-            
+        for i, source in enumerate(sources[:count]):
             blogs.append({
-                'id': f'fallback_{i}',
-                'title': f'{topic_name} - Study Guide Part {i+1}',
-                'source': 'Study Material',
-                'type': 'blog',
-                'icon': '📖',
-                'url': '#',
-                'content': content,
-                'snippet': f'Complete guide for {topic_name}',
-                'reading_time': '3 min',
-                'difficulty': 'medium',
-                'highlights': [f'Part {i+1} of {topic_name} guide'],
-                'has_content': True
+                'id': f'article_{i + 1}',
+                'title': f'{topic_name} - {source["name"]} Guide for Class {class_level}',
+                'source': source['domain'],
+                'url': f'https://{source["domain"]}/search?q={quote(topic_name)}',
+                'snippet': f'Comprehensive guide to {topic_name} with examples, practice problems, and solutions for Class {class_level} {subject_name}.',
+                'type': 'article',
+                'icon': source['icon'],
+                'reading_time': '5 min read',
+                'has_content': False,
+                'content': ''
             })
         
         return blogs
-    
-    # ==================== CACHE ====================
-    async def _get_cached_content(self, topic_id: str) -> Optional[Dict]:
-        """Get from cache"""
-        try:
-            week_ago = datetime.utcnow() - timedelta(days=7)
-            cached = await self.db["content_cache"].find_one({
-                "topic_id": topic_id,
-                "created_at": {"$gte": week_ago}
-            })
-            if cached:
-                return cached.get("content")
-        except:
-            pass
-        return None
-    
-    async def _save_to_cache(self, topic_id: str, content: Dict):
-        """Save to cache"""
-        try:
-            await self.db["content_cache"].update_one(
-                {"topic_id": topic_id},
-                {"$set": {
-                    "topic_id": topic_id,
-                    "content": content,
-                    "created_at": datetime.utcnow()
-                }},
-                upsert=True
-            )
-        except:
-            pass
