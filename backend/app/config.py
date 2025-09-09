@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     # Google Gemini
     GEMINI_API_KEY: Optional[str] = Field(None, env="GEMINI_API_KEY")
     GEMINI_MODEL: str = Field(default="gemini-pro", env="GEMINI_MODEL")
+
+    SERPAPI_KEY: Optional[str] = Field(None, env="SERPAPI_KEY")
     
     # YouTube API (Optional - for better video recommendations)
     YOUTUBE_API_KEY: Optional[str] = Field(None, env="YOUTUBE_API_KEY")

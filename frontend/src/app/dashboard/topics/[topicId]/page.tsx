@@ -7,6 +7,8 @@ import { useAuth } from '@clerk/nextjs';
 import dynamic from 'next/dynamic';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
+import TopicArticles from '@/components/TopicArticles';
+
 import { 
   Brain, 
   ArrowLeft, 
@@ -704,15 +706,10 @@ export default function TopicDetailPage() {
 
         {/* Articles Tab */}
         {activeTab === 'articles' && (
-          <div className="glass-effect rounded-2xl p-8 fade-in">
-            <div className="text-center py-12">
-              <Newspaper className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">Articles Coming Soon</h3>
-              <p className="text-gray-400">
-                We're working on bringing you the best educational articles and reference materials.
-              </p>
-            </div>
-          </div>
+          <TopicArticles 
+            topicId={topicId}
+            topicName={summaryData?.topic_name || ''}
+          />
         )}
       </div>
     </div>
