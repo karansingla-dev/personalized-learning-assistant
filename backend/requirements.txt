@@ -41,3 +41,6 @@ reportlab==4.0.7  # For creating test PDFs
 # Optional: If you want to use BeautifulSoup for web scraping later
 beautifulsoup4==4.12.2
 lxml==4.9.3
+
+# YouTube Video Transcripts (NEW)
+youtube-transcript-api==0.6.1
