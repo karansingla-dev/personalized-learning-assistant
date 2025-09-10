@@ -7,8 +7,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { 
   Home, 
-  BookOpen, 
-  FileText, 
+  Trophy,  // For Quiz
   Brain, 
   Calendar,
   BarChart,
@@ -52,28 +51,16 @@ export default function DashboardLayout({
       color: 'from-blue-500 to-cyan-400'
     },
     {
-      name: 'Syllabus',
-      href: '/dashboard/syllabus',
-      icon: BookOpen,
+      name: 'Quiz',
+      href: '/dashboard/quiz',
+      icon: Trophy,
       color: 'from-purple-500 to-pink-400'
-    },
-    {
-      name: 'Notes',
-      href: '/dashboard/notes',
-      icon: FileText,
-      color: 'from-green-500 to-emerald-400'
     },
     {
       name: 'AI Tutor',
       href: '/dashboard/ai-tutor',
       icon: Brain,
       color: 'from-orange-500 to-red-400'
-    },
-    {
-      name: 'Study Planner',
-      href: '/dashboard/study-planner',
-      icon: Calendar,
-      color: 'from-indigo-500 to-purple-400'
     },
     {
       name: 'Progress',
@@ -140,7 +127,7 @@ export default function DashboardLayout({
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/50" />
                 <input
                   type="text"
-                  placeholder="Search topics, notes, or courses..."
+                  placeholder="Search topics, quizzes, or courses..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-purple-400 focus:bg-white/15 transition-all text-sm"
@@ -234,35 +221,23 @@ export default function DashboardLayout({
                   className={`
                     flex items-center space-x-3 px-4 py-3 rounded-lg transition-all
                     ${isActive 
-                      ? `bg-gradient-to-r ${item.color} text-white` 
+                      ? 'bg-white/20 text-white' 
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                     }
                   `}
                 >
-                  <Icon className="w-5 h-5" />
-                  <span className="font-medium">{item.name}</span>
+                  <Icon className={`w-5 h-5 bg-gradient-to-br ${item.color} bg-clip-text text-transparent`} />
+                  <span>{item.name}</span>
                 </Link>
               );
             })}
           </nav>
-
-          {/* Mobile Search */}
-          <div className="p-4 pt-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-white/50" />
-              <input
-                type="text"
-                placeholder="Search..."
-                className="w-full pl-10 pr-4 py-2 bg-white/10 border border-white/20 rounded-lg text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
-              />
-            </div>
-          </div>
         </div>
       )}
 
-      {/* Main Content Area - Full Width */}
+      {/* Main Content Area */}
       <main className="pt-14 min-h-screen">
-        <div className="w-full px-4 sm:px-6 lg:px-8 py-6">
+        <div className="max-w-7xl mx-auto">
           {children}
         </div>
       </main>

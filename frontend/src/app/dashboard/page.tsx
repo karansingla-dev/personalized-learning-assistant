@@ -472,10 +472,10 @@ export default function DashboardPage() {
                   Continue Learning
                 </button>
                 <button 
-                  onClick={() => router.push('/dashboard/schedule')}
+                  onClick={() => router.push('/dashboard/quiz')}
                   className="px-6 py-3 bg-white/10 text-white rounded-xl font-semibold hover:bg-white/20 transition"
                 >
-                  View Schedule
+                  Solve Quiz
                 </button>
               </div>
             </div>
@@ -507,12 +507,6 @@ export default function DashboardPage() {
                   >
                     <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                   </button>
-                  <button 
-                    onClick={() => router.push('/dashboard/syllabus')}
-                    className="text-sm text-gray-400 hover:text-white transition"
-                  >
-                    View All →
-                  </button>
                 </div>
               </div>
               
@@ -534,41 +528,6 @@ export default function DashboardPage() {
                   ))}
                 </div>
               )}
-            </div>
-
-            {/* Quick Actions */}
-            <div className="glass-effect rounded-2xl p-6">
-              <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-4 gap-3">
-                <button 
-                  onClick={() => router.push('/dashboard/study')}
-                  className="p-4 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-xl hover:from-blue-500/30 hover:to-cyan-500/30 transition group"
-                >
-                  <BookOpen className="w-6 h-6 text-blue-400 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-xs text-gray-300">Study</p>
-                </button>
-                <button 
-                  onClick={() => router.push('/dashboard/quiz')}
-                  className="p-4 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-xl hover:from-purple-500/30 hover:to-pink-500/30 transition group"
-                >
-                  <Trophy className="w-6 h-6 text-purple-400 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-xs text-gray-300">Quiz</p>
-                </button>
-                <button 
-                  onClick={() => router.push('/dashboard/progress')}
-                  className="p-4 bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-xl hover:from-orange-500/30 hover:to-red-500/30 transition group"
-                >
-                  <BarChart className="w-6 h-6 text-orange-400 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-xs text-gray-300">Progress</p>
-                </button>
-                <button 
-                  onClick={() => router.push('/dashboard/notes')}
-                  className="p-4 bg-gradient-to-br from-green-500/20 to-emerald-500/20 rounded-xl hover:from-green-500/30 hover:to-emerald-500/30 transition group"
-                >
-                  <BookOpen className="w-6 h-6 text-green-400 mb-2 group-hover:scale-110 transition" />
-                  <p className="text-xs text-gray-300">Notes</p>
-                </button>
-              </div>
             </div>
           </div>
 
