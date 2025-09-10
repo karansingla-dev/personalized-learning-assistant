@@ -6,6 +6,7 @@ Video Summary API - Fixed version with proper transcript fetching
 from fastapi import APIRouter, HTTPException, Request, Query
 from typing import Dict, Optional, List
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
 import os
 import re
 import html
@@ -14,7 +15,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound, VideoUnavailable
 
 router = APIRouter(prefix="/api/v1/video-summary", tags=["video-summary"])
-
+load_dotenv()
 # Configure Gemini AI
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if GEMINI_API_KEY:

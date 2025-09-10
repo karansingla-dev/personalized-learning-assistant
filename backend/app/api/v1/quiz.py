@@ -11,16 +11,51 @@ import random
 import json
 import google.generativeai as genai
 from app.config import settings
+import logging
+import os
+from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/quiz", tags=["quiz"])
 
+load_dotenv()
 # Configure Gemini AI
-GEMINI_API_KEY = settings.GEMINI_API_KEY
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+model = None
+
 if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-pro')
+    try:
+        logger.info(f"✅ fetching credential from env: {GEMINI_API_KEY}")
+        genai.configure(api_key=GEMINI_API_KEY)
+        
+        logger.info(f"✅ Successfully found credential from env")
+        # Try different model versions in order of preference
+        model_attempts = [
+            'gemini-1.5-flash',     # Fastest, most cost-effective
+            'gemini-1.5-pro',       # More capable
+            'gemini-1.0-pro',       # Older stable version
+            'gemini-pro-latest',    # Latest version
+        ]
+        
+        for model_name in model_attempts:
+            try:
+                model = genai.GenerativeModel(model_name)
+                # Test the model with a simple prompt
+                test_response = model.generate_content("Test")
+                logger.info(f"✅ Successfully initialized Gemini model: {model_name}")
+                break
+            except Exception as e:
+                logger.warning(f"Failed to initialize {model_name}: {e}")
+                continue
+        
+        if not model:
+            logger.error("❌ Could not initialize any Gemini model")
+            
+    except Exception as e:
+        logger.error(f"❌ Failed to configure Gemini: {e}")
+        model = None
 else:
-    model = None
+    logger.warning("⚠️ GEMINI_API_KEY not found in the environment variables")
 
 def get_db(request: Request):
     return request.app.state.db

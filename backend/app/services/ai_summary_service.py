@@ -7,9 +7,11 @@ import os
 from typing import Dict, Optional
 import google.generativeai as genai
 from datetime import datetime
+from dotenv import load_dotenv
 
 class AISummaryService:
     def __init__(self):
+        load_dotenv()
         self.api_key = os.getenv('GEMINI_API_KEY')
         self.model = None
         

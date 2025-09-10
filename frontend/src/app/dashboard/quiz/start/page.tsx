@@ -1,4 +1,6 @@
 // frontend/src/app/dashboard/quiz/start/page.tsx
+// FIXED VERSION - Proper quiz submission and navigation
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -17,7 +19,8 @@ import {
   Brain,
   Target,
   Award,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from 'lucide-react';
 
 interface Question {
@@ -49,6 +52,7 @@ export default function QuizTakingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   // Load quiz data and generate quiz
   useEffect(() => {
@@ -96,60 +100,57 @@ export default function QuizTakingPage() {
       }
     };
 
-    loadQuiz();
+    if (userId) {
+      loadQuiz();
+    }
   }, [userId, router]);
 
   // Timer countdown
   useEffect(() => {
-    if (timeLeft <= 0 || !quizData) return;
+    if (timeLeft > 0 && !isSubmitting) {
+      const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+      return () => clearTimeout(timer);
+    } else if (timeLeft === 0 && quizData && !isSubmitting) {
+      // Auto-submit when time is up
+      handleSubmitQuiz();
+    }
+  }, [timeLeft, isSubmitting, quizData]);
 
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          // Auto-submit when time is up
-          handleSubmit();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeLeft, quizData]);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  const handleAnswerSelect = (questionId: string, optionIndex: number) => {
+  const handleAnswerSelect = (optionIndex: number) => {
+    if (!quizData) return;
+    
+    const questionId = quizData.questions[currentQuestion].question_id;
     setAnswers(prev => ({
       ...prev,
       [questionId]: optionIndex
     }));
   };
 
-  const toggleFlag = (questionIndex: number) => {
+  const handleFlagToggle = () => {
     setFlaggedQuestions(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(questionIndex)) {
-        newSet.delete(questionIndex);
+      if (newSet.has(currentQuestion)) {
+        newSet.delete(currentQuestion);
       } else {
-        newSet.add(questionIndex);
+        newSet.add(currentQuestion);
       }
       return newSet;
     });
   };
 
-  const handleSubmit = async () => {
-    if (isSubmitting) return;
+  const handleSubmitQuiz = async () => {
+    if (!quizData || !userId || isSubmitting) return;
     
     setIsSubmitting(true);
-    
+    setSubmissionError(null);
+    setShowConfirmSubmit(false);
+
     try {
-      const timeTaken = quizData ? Math.ceil((quizData.time_limit_minutes * 60 - timeLeft) / 60) : 0;
-      
+      // Calculate time taken
+      const totalTime = quizData.time_limit_minutes * 60;
+      const timeTaken = Math.ceil((totalTime - timeLeft) / 60); // in minutes
+
+      // Submit quiz to backend
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/quiz/submit`,
         {
@@ -158,7 +159,7 @@ export default function QuizTakingPage() {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            quiz_id: quizData?.quiz_id,
+            quiz_id: quizData.quiz_id,
             user_id: userId,
             answers: answers,
             time_taken_minutes: timeTaken
@@ -166,44 +167,58 @@ export default function QuizTakingPage() {
         }
       );
 
-      if (!response.ok) throw new Error('Failed to submit quiz');
-      
+      if (!response.ok) {
+        throw new Error('Failed to submit quiz');
+      }
+
       const result = await response.json();
       
-      // Store result in session storage for results page
+      // Store result in sessionStorage with a flag
       sessionStorage.setItem('quizResult', JSON.stringify(result));
+      sessionStorage.setItem('quizResultReady', 'true');
+      
+      // Small delay to ensure data is saved
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Navigate to results page
       router.push('/dashboard/quiz/results');
       
     } catch (error) {
       console.error('Error submitting quiz:', error);
-      alert('Failed to submit quiz. Please try again.');
+      setSubmissionError('Failed to submit quiz. Please try again.');
       setIsSubmitting(false);
     }
   };
 
-  const getQuestionStatus = (index: number) => {
-    const question = quizData?.questions[index];
-    if (!question) return 'unanswered';
-    
-    const isAnswered = answers[question.question_id] !== undefined;
-    const isFlagged = flaggedQuestions.has(index);
-    
-    if (isFlagged) return 'flagged';
-    if (isAnswered) return 'answered';
-    return 'unanswered';
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const answeredCount = quizData ? Object.keys(answers).length : 0;
-  const unansweredCount = quizData ? quizData.total_questions - answeredCount : 0;
+  const getQuestionStatus = (index: number) => {
+    if (!quizData) return 'unanswered';
+    const questionId = quizData.questions[index].question_id;
+    if (answers[questionId] !== undefined) {
+      return flaggedQuestions.has(index) ? 'flagged' : 'answered';
+    }
+    return flaggedQuestions.has(index) ? 'flagged' : 'unanswered';
+  };
+
+  const getProgress = () => {
+    if (!quizData) return { answered: 0, total: 0, percentage: 0 };
+    const answered = Object.keys(answers).length;
+    const total = quizData.total_questions;
+    const percentage = (answered / total) * 100;
+    return { answered, total, percentage };
+  };
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-500/30 border-t-purple-500 rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-white/60">Generating your quiz...</p>
+          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+          <p className="text-white/60">Loading quiz...</p>
         </div>
       </div>
     );
@@ -214,78 +229,84 @@ export default function QuizTakingPage() {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-          <p className="text-white">No quiz data found</p>
+          <p className="text-white mb-4">Failed to load quiz</p>
           <button
             onClick={() => router.push('/dashboard/quiz')}
-            className="mt-4 px-6 py-2 bg-purple-500 text-white rounded-lg"
+            className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
           >
-            Go Back
+            Back to Quiz Selection
           </button>
         </div>
       </div>
     );
   }
 
+  const progress = getProgress();
   const currentQ = quizData.questions[currentQuestion];
 
   return (
     <div className="min-h-screen px-4 py-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header with Timer */}
-        <div className="glass-effect rounded-2xl p-4 mb-6">
-          <div className="flex items-center justify-between">
+        {/* Header with Timer and Progress */}
+        <div className="mb-6 glass-effect rounded-2xl p-4">
+          <div className="flex justify-between items-center mb-4">
             <div className="flex items-center space-x-4">
-              <h1 className="text-xl font-bold text-white">Quiz in Progress</h1>
-              <div className="flex items-center space-x-2 text-sm">
-                <span className="text-green-400">{answeredCount} answered</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-yellow-400">{flaggedQuestions.size} flagged</span>
-                <span className="text-gray-400">•</span>
-                <span className="text-gray-400">{unansweredCount} remaining</span>
+              <h1 className="text-2xl font-bold text-white">Quiz in Progress</h1>
+              <div className={`px-3 py-1 rounded-full ${
+                timeLeft < 300 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+              } flex items-center`}>
+                <Clock className="w-4 h-4 mr-2" />
+                {formatTime(timeLeft)}
               </div>
             </div>
             
-            <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
-              timeLeft < 300 ? 'bg-red-500/20 text-red-400' : 'bg-purple-500/20 text-purple-400'
-            }`}>
-              <Clock className="w-5 h-5" />
-              <span className="font-mono font-bold text-lg">{formatTime(timeLeft)}</span>
+            <div className="flex items-center space-x-4">
+              <div className="text-white/60">
+                Progress: {progress.answered}/{progress.total}
+              </div>
+              <div className="w-32 h-2 bg-white/10 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                  style={{ width: `${progress.percentage}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Question Area */}
-          <div className="lg:col-span-3">
+        {/* Main Content */}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Question Panel */}
+          <div className="lg:col-span-2">
             <div className="glass-effect rounded-2xl p-6">
               {/* Question Header */}
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center space-x-4">
-                  <span className="text-2xl font-bold text-white">
-                    Question {currentQuestion + 1} of {quizData.total_questions}
-                  </span>
+              <div className="flex justify-between items-start mb-6">
+                <div>
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="text-purple-400 font-semibold">
+                      Question {currentQuestion + 1} of {quizData.total_questions}
+                    </span>
+                    {currentQ.difficulty && (
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        currentQ.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
+                        currentQ.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                        'bg-red-500/20 text-red-400'
+                      }`}>
+                        {currentQ.difficulty}
+                      </span>
+                    )}
+                  </div>
                   {currentQ.topic_name && (
-                    <span className="px-3 py-1 bg-blue-500/20 text-blue-400 rounded-full text-sm">
-                      {currentQ.topic_name}
-                    </span>
-                  )}
-                  {currentQ.difficulty && (
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      currentQ.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
-                      currentQ.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                      'bg-red-500/20 text-red-400'
-                    }`}>
-                      {currentQ.difficulty}
-                    </span>
+                    <p className="text-white/60 text-sm">Topic: {currentQ.topic_name}</p>
                   )}
                 </div>
                 
                 <button
-                  onClick={() => toggleFlag(currentQuestion)}
+                  onClick={handleFlagToggle}
                   className={`p-2 rounded-lg transition ${
                     flaggedQuestions.has(currentQuestion)
                       ? 'bg-yellow-500/20 text-yellow-400'
-                      : 'bg-white/10 text-gray-400 hover:text-white'
+                      : 'bg-white/10 text-white/60 hover:text-white'
                   }`}
                 >
                   <Flag className="w-5 h-5" />
@@ -293,32 +314,26 @@ export default function QuizTakingPage() {
               </div>
 
               {/* Question Text */}
-              <div className="mb-8">
-                <p className="text-xl text-white leading-relaxed">
-                  {currentQ.question_text}
-                </p>
-              </div>
+              <h2 className="text-xl font-semibold text-white mb-6">
+                {currentQ.question_text}
+              </h2>
 
               {/* Options */}
               <div className="space-y-3">
                 {currentQ.options.map((option, index) => (
                   <button
                     key={index}
-                    onClick={() => handleAnswerSelect(currentQ.question_id, index)}
-                    className={`w-full p-4 rounded-xl text-left transition ${
+                    onClick={() => handleAnswerSelect(index)}
+                    className={`w-full text-left p-4 rounded-lg transition-all ${
                       answers[currentQ.question_id] === index
-                        ? 'bg-purple-500/30 border-2 border-purple-500 text-white'
-                        : 'bg-white/5 border-2 border-white/10 hover:bg-white/10 text-gray-300 hover:text-white'
+                        ? 'bg-purple-500/30 border-2 border-purple-400 text-white'
+                        : 'bg-white/5 border-2 border-white/10 text-white/80 hover:bg-white/10 hover:border-white/20'
                     }`}
                   >
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-8 h-8 rounded-full border-2 flex items-center justify-center ${
-                        answers[currentQ.question_id] === index
-                          ? 'bg-purple-500 border-purple-500 text-white'
-                          : 'border-gray-400'
-                      }`}>
+                    <div className="flex items-center">
+                      <span className="flex-shrink-0 w-8 h-8 rounded-full bg-white/10 flex items-center justify-center mr-3 font-bold">
                         {String.fromCharCode(65 + index)}
-                      </div>
+                      </span>
                       <span>{option}</span>
                     </div>
                   </button>
@@ -326,38 +341,39 @@ export default function QuizTakingPage() {
               </div>
 
               {/* Navigation Buttons */}
-              <div className="flex items-center justify-between mt-8">
+              <div className="flex justify-between items-center mt-8">
                 <button
-                  onClick={() => setCurrentQuestion(prev => Math.max(0, prev - 1))}
+                  onClick={() => setCurrentQuestion(Math.max(0, currentQuestion - 1))}
                   disabled={currentQuestion === 0}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition ${
+                  className={`flex items-center px-4 py-2 rounded-lg transition ${
                     currentQuestion === 0
                       ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       : 'bg-white/10 text-white hover:bg-white/20'
                   }`}
                 >
-                  <ChevronLeft className="w-5 h-5" />
-                  <span>Previous</span>
+                  <ChevronLeft className="w-5 h-5 mr-1" />
+                  Previous
                 </button>
 
                 <button
-                  onClick={() => setCurrentQuestion(prev => Math.min(quizData.total_questions - 1, prev + 1))}
+                  onClick={() => setCurrentQuestion(Math.min(quizData.total_questions - 1, currentQuestion + 1))}
                   disabled={currentQuestion === quizData.total_questions - 1}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition ${
+                  className={`flex items-center px-4 py-2 rounded-lg transition ${
                     currentQuestion === quizData.total_questions - 1
                       ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
                       : 'bg-white/10 text-white hover:bg-white/20'
                   }`}
                 >
-                  <span>Next</span>
-                  <ChevronRight className="w-5 h-5" />
+                  Next
+                  <ChevronRight className="w-5 h-5 ml-1" />
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Question Navigator */}
+          {/* Side Panel */}
           <div className="space-y-4">
+            {/* Question Navigator */}
             <div className="glass-effect rounded-2xl p-4">
               <h3 className="text-lg font-bold text-white mb-4">Question Navigator</h3>
               
@@ -406,58 +422,69 @@ export default function QuizTakingPage() {
             {/* Submit Button */}
             <button
               onClick={() => setShowConfirmSubmit(true)}
-              className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold rounded-xl hover:shadow-lg transition flex items-center justify-center"
+              disabled={isSubmitting}
+              className="w-full py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
-              <Send className="w-5 h-5 mr-2" />
-              Submit Quiz
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Send className="w-5 h-5 mr-2" />
+                  Submit Quiz
+                </>
+              )}
             </button>
+
+            {/* Error Message */}
+            {submissionError && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+                <p className="text-red-400 text-sm">{submissionError}</p>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Confirm Submit Modal */}
+      {/* Confirmation Modal */}
       {showConfirmSubmit && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="glass-effect rounded-2xl p-6 max-w-md">
-            <h3 className="text-xl font-bold text-white mb-4">Confirm Submission</h3>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="glass-effect rounded-2xl p-6 max-w-md w-full">
+            <h3 className="text-xl font-bold text-white mb-4">Submit Quiz?</h3>
             
             <div className="space-y-3 mb-6">
-              <p className="text-gray-300">Are you sure you want to submit your quiz?</p>
+              <p className="text-white/80">
+                You have answered {progress.answered} out of {progress.total} questions.
+              </p>
               
-              <div className="bg-white/10 rounded-lg p-3 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Answered Questions:</span>
-                  <span className="text-white">{answeredCount} / {quizData.total_questions}</span>
+              {progress.answered < progress.total && (
+                <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg p-3">
+                  <p className="text-yellow-400 text-sm">
+                    ⚠️ You have {progress.total - progress.answered} unanswered questions.
+                  </p>
                 </div>
-                {unansweredCount > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-yellow-400">Unanswered Questions:</span>
-                    <span className="text-yellow-400">{unansweredCount}</span>
-                  </div>
-                )}
-                {flaggedQuestions.size > 0 && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-orange-400">Flagged Questions:</span>
-                    <span className="text-orange-400">{flaggedQuestions.size}</span>
-                  </div>
-                )}
-              </div>
+              )}
+              
+              {flaggedQuestions.size > 0 && (
+                <p className="text-yellow-400 text-sm">
+                  📌 You have {flaggedQuestions.size} flagged questions.
+                </p>
+              )}
             </div>
-
+            
             <div className="flex space-x-3">
               <button
                 onClick={() => setShowConfirmSubmit(false)}
-                className="flex-1 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition"
+                className="flex-1 px-4 py-2 bg-white/10 text-white rounded-lg hover:bg-white/20 transition"
               >
-                Review Again
+                Review Answers
               </button>
               <button
-                onClick={() => {
-                  setShowConfirmSubmit(false);
-                  handleSubmit();
-                }}
+                onClick={handleSubmitQuiz}
                 disabled={isSubmitting}
-                className="flex-1 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-bold hover:shadow-lg transition"
+                className="flex-1 px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:shadow-lg transition disabled:opacity-50"
               >
                 {isSubmitting ? 'Submitting...' : 'Confirm Submit'}
               </button>

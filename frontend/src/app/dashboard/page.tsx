@@ -13,6 +13,8 @@ import {
   Flame,
   Book,
   Calculator,
+  FileText,
+  Download,
   Atom,
   Globe,
   Calendar,
@@ -488,6 +490,97 @@ export default function DashboardPage() {
             <StatsCard key={index} {...stat} />
           ))}
         </div>
+
+        <div className="mb-8">
+          <h2 className="text-2xl font-bold text-white mb-4 flex items-center">
+            <Sparkles className="w-6 h-6 mr-2 text-yellow-400" />
+            Quick Actions
+          </h2>
+          
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            
+            {/* Quiz Card */}
+            <div 
+              onClick={() => router.push('/dashboard/quiz')}
+              className="glass-effect rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center mb-4">
+                  <Trophy className="w-7 h-7 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Practice Quiz</h3>
+                <p className="text-white/60 text-sm mb-4">
+                  Test your knowledge with AI-generated quizzes
+                </p>
+                <button className="w-full py-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg font-semibold hover:shadow-lg transition">
+                  Start Quiz →
+                </button>
+              </div>
+            </div>
+
+            {/* QUESTION SOLVER CARD - NEW! */}
+            <div 
+              onClick={() => router.push('/dashboard/question-solver')}
+              className="glass-effect rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-teal-500/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-green-500 to-teal-500 flex items-center justify-center">
+                    <Calculator className="w-7 h-7 text-white" />
+                  </div>
+                  <span className="px-3 py-1 bg-green-500/20 text-green-400 rounded-full text-xs font-semibold animate-pulse">
+                    NEW
+                  </span>
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Question Solver</h3>
+                <p className="text-white/60 text-sm mb-4">
+                  Upload homework and get instant AI solutions
+                </p>
+                <div className="space-y-2 mb-4">
+                  <div className="flex items-center text-white/80 text-xs">
+                    <FileText className="w-3 h-3 mr-2 text-green-400" />
+                    <span>PDF, Word, Images</span>
+                  </div>
+                  <div className="flex items-center text-white/80 text-xs">
+                    <Zap className="w-3 h-3 mr-2 text-yellow-400" />
+                    <span>Step-by-step solutions</span>
+                  </div>
+                  <div className="flex items-center text-white/80 text-xs">
+                    <Download className="w-3 h-3 mr-2 text-blue-400" />
+                    <span>Download as PDF</span>
+                  </div>
+                </div>
+                <button className="w-full py-2 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-lg font-semibold hover:shadow-lg transition">
+                  Solve Questions →
+                </button>
+              </div>
+            </div>
+
+            {/* AI Tutor Card */}
+            <div 
+              onClick={() => router.push('/dashboard/ai-tutor')}
+              className="glass-effect rounded-2xl p-6 cursor-pointer hover:scale-105 transition-all duration-300 group"
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/20 to-red-500/20 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="relative">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center mb-4">
+                  <Brain className="w-7 h-7 text-white" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">AI Tutor</h3>
+                <p className="text-white/60 text-sm mb-4">
+                  Get personalized learning assistance from AI
+                </p>
+                <button className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-lg font-semibold hover:shadow-lg transition">
+                  Start Learning →
+                </button>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -19,7 +19,7 @@ from bson import ObjectId
 
 from app.models.models import *
 from app.config import settings
-from app.api.v1 import auth, users, dashboard, topics, ai_summary, video_summary, articles, quiz
+from app.api.v1 import auth, users, dashboard, topics, ai_summary, video_summary, articles, quiz, question_solver
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -114,6 +114,7 @@ app.include_router(ai_summary.router)
 app.include_router(video_summary.router)
 app.include_router(articles.router)
 app.include_router(quiz.router)
+app.include_router(question_solver.router)
 
 # Health check endpoint
 @app.get("/health")
